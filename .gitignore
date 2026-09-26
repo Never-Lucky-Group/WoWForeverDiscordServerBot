@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Secrets and local configuration (see .env.example and config.example.json)
+.env
+.env.*
+!.env.example
+config.json
+
+# Test and tooling output
+coverage/
+*.log
