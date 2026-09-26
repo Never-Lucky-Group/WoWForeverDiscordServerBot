@@ -1,2 +1,132 @@
 # WoWForeverDiscordServerBot
-Custom WoW Forever Discord server bot
+
+Custom WoW Forever Discord server bot, built with [discord.js](https://discord.js.org) v14 and JavaScript on Node.js 24 LTS.
+
+The bot is used mainly in a single server but supports several. It only operates in servers on an allowlist (`config.json`) and automatically leaves any other server it is added to.
+
+## Current behavior
+
+- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role**. They work in servers and in DMs with the bot.
+  - In a server, the command runs for that server.
+  - In a DM, it runs for the allowlisted server where the user is an Officer. If they are an Officer in several, the bot asks which server to use.
+- **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
+- **Messages in server channels** are ignored for now.
+
+## Requirements
+
+- Node.js 24 LTS (see `.nvmrc`)
+- npm
+
+## Local setup
+
+```bash
+npm install
+cp .env.example .env                  # fill in DISCORD_TOKEN and DISCORD_CLIENT_ID
+cp config.example.json config.json    # fill in the allowlisted servers
+npm run deploy-commands               # register slash commands with Discord
+npm run dev                           # start with auto-restart and readable logs
+```
+
+### Configuration
+
+`.env` holds secrets and runtime settings. See `.env.example`.
+
+| Variable            | Required | Description                                                  |
+| ------------------- | -------- | ------------------------------------------------------------ |
+| `DISCORD_TOKEN`     | yes      | Bot token                                                    |
+| `DISCORD_CLIENT_ID` | yes      | Application ID                                               |
+| `LOG_LEVEL`         | no       | `fatal`, `error`, `warn`, `info` (default), `debug`, `trace` |
+| `BOT_CONFIG_PATH`   | no       | Path to the allowlist config (default `config.json`)         |
+
+`config.json` is the server allowlist. It is gitignored because this repository is public. See `config.example.json`.
+
+```json
+{
+  "guilds": [{ "name": "Production server", "id": "SERVER_ID", "officerRoleId": "ROLE_ID" }]
+}
+```
+
+- `name` is only a label for you; the bot uses the server's live name.
+- Get IDs by enabling _Developer Mode_ in Discord (User Settings → Advanced), then right-clicking a server or role → _Copy ID_.
+- The bot refuses to start with an empty allowlist. With no servers listed, it would leave every server.
+
+### Run only one instance at a time
+
+The test and production servers share one bot application and token. Every running copy of the bot receives events from both servers, so two copies would both answer DMs and race each other on slash commands. To test a branch locally, stop the homelab instance first.
+
+## Scripts
+
+| Script                    | Description                                                               |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `npm start`               | Run the bot (JSON logs)                                                   |
+| `npm run dev`             | Run with auto-restart on file changes and pretty logs                     |
+| `npm run deploy-commands` | Register slash commands globally (see below)                              |
+| `npm run lint`            | ESLint                                                                    |
+| `npm run format`          | Format all files with Prettier (`format:check` to verify without writing) |
+| `npm test`                | Run the Vitest suite once (`test:watch` to re-run on changes)             |
+
+Both `start` and `dev` load `.env` if it exists; otherwise they read variables from the environment.
+
+### When to run `deploy-commands`
+
+Run it only when a command's **definition** changes: its name, description or options, or when you add or remove a command. Changes inside `execute` do not need it. Commands are registered globally, which is required for them to work in DMs. Discord limits how many commands can be created per day, so the bot does not register them on every start.
+
+## Project structure
+
+```
+src/
+  index.js                  entry point: load config, create client, load events/commands, log in
+  deploy-commands.js        registers slash commands globally
+  config.js                 validates .env and config.json with zod
+  client.js                 discord.js client (intents, partials)
+  commands/<category>/*.js  slash commands, loaded automatically
+  events/*.js               event listeners, loaded automatically
+  handlers/                 command dispatcher, DM handler, server allowlist
+  lib/                      shared helpers (logger, membership checks, command builder)
+  loaders/                  dynamic loaders for commands/ and events/
+tests/                      Vitest tests
+```
+
+Plain JavaScript with ES modules (`import`/`export`); there is no build step. Imports between source files include the `.js` extension.
+
+### Adding a slash command
+
+Create `src/commands/<category>/<name>.js`:
+
+```js
+import { MessageFlags } from 'discord.js';
+import { createOfficerCommand } from '../../lib/command.js';
+import { respond } from '../../lib/respond.js';
+
+export default {
+  data: createOfficerCommand('example', 'What the command does.'),
+  async execute(interaction, { guild, member, guildConfig }) {
+    await respond(interaction, {
+      content: `Hello from ${guild.name}!`,
+      flags: MessageFlags.Ephemeral,
+    });
+  },
+};
+```
+
+- The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
+- Use `respond()` rather than `interaction.reply()`, because the DM server picker may already have used the first reply.
+- Then run `npm run deploy-commands`.
+
+### Adding an event listener
+
+Create `src/events/<name>.js`:
+
+```js
+import { Events } from 'discord.js';
+
+export default {
+  name: Events.GuildMemberAdd,
+  // once: true, // to run only the first time the event fires
+  async execute(member) {
+    // ...
+  },
+};
+```
+
+Errors thrown by any event handler are logged, not crashed on.
