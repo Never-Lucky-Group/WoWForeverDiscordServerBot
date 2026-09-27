@@ -1,0 +1,37 @@
+# Production Compose file. Copy it to the server (e.g. /opt/discord-bot/compose.yml) next to:
+#   .env         secrets and settings, see .env.example (chmod 600)
+#   config.json  server allowlist, see config.example.json (must be readable by uid 1000)
+# No secrets belong in this file.
+name: wowforever-bot
+
+services:
+  bot:
+    # Pin an exact version from the GHCR package page. Change it to update or roll back.
+    image: ghcr.io/rboothian/wowforeverdiscordserverbot:0.1.1
+    container_name: wowforever-bot
+    restart: unless-stopped
+    # Small init process as PID 1: forwards signals and reaps zombie processes.
+    init: true
+    env_file: .env
+    volumes:
+      - ./config.json:/app/config.json:ro
+    # The image's files cannot be changed at runtime. Data the bot must keep goes in a volume
+    # mounted at /app/data (add one when a feature needs it); scratch files go in /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # Docker's default json-file logging never rotates; cap it at 3 x 10 MB.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+    labels:
+      # WUD: only compare the SemVer version tags, not sha-* or main. `$$` is a literal `$`.
+      - wud.tag.include=^\d+\.\d+\.\d+$$
+      - wud.display.name=WoW Forever bot
+      - wud.link.template=https://github.com/RBoothian/WoWForeverDiscordServerBot/commits/main

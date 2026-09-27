@@ -1,0 +1,6 @@
+# Allowlist: only what the image needs is sent to the Docker build. Everything else, including
+# .env and config.json, is excluded by default, so new local files can never leak into the image.
+*
+!package.json
+!package-lock.json
+!src/
