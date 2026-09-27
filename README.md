@@ -52,7 +52,7 @@ npm run dev                           # start with auto-restart and readable log
 
 ### Run only one instance at a time
 
-The test and production servers share one bot application and token. Every running copy of the bot receives events from both servers, so two copies would both answer DMs and race each other on slash commands. To test a branch locally, stop the homelab instance first.
+The test and production servers share one bot application and token. Every running copy of the bot receives events from both servers, so two copies would both answer DMs and race each other on slash commands. To test a branch locally, stop the homelab instance first (`docker compose stop` in its directory on the server, `docker compose start` afterwards).
 
 ## Scripts
 
@@ -71,9 +71,71 @@ Both `start` and `dev` load `.env` if it exists; otherwise they read variables f
 
 Run it only when a command's **definition** changes: its name, description or options, or when you add or remove a command. Changes inside `execute` do not need it. Commands are registered globally, which is required for them to work in DMs. Discord limits how many commands can be created per day, so the bot does not register them on every start.
 
+## Deployment
+
+Production runs the bot as a Docker container on the homelab server. GitHub is the source of truth: the server only pulls published images and never needs this repository.
+
+```
+push to main → GitHub Actions (lint, format, tests) → Docker build → GHCR → WUD reports the update → you update the server
+```
+
+### CI and images
+
+`.github/workflows/ci.yml` runs lint, format check and tests on every pull request and push to `main`, then builds the Docker image. Pushes to `main` (and manual runs on `main` from the Actions tab) publish it to `ghcr.io/rboothian/wowforeverdiscordserverbot` with three tags:
+
+| Tag          | Example       | Use                                                      |
+| ------------ | ------------- | -------------------------------------------------------- |
+| `0.1.<run>`  | `0.1.42`      | Version to run in production; increases with every build |
+| `sha-<hash>` | `sha-1a2b3c4` | Finds the image built from a given commit                |
+| `main`       | `main`        | Always the newest build; not used in production          |
+
+`MAJOR.MINOR` comes from `package.json`, and the last number is the workflow's run number. The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Run the workflow manually to rebuild on a patched Node base image without a code change.
+
+After the first publish, check the package's visibility under the GitHub profile's **Packages** tab and set it to **Public** if it is not, so the server and WUD can pull it without credentials. The image contains only `src/`, `package.json` and production `node_modules` (see `.dockerignore`), never `.env` or `config.json`.
+
+### Server setup
+
+On the server, create a directory (for example `/opt/discord-bot`) containing:
+
+- `compose.yml`: a copy of [`deploy/compose.yml`](deploy/compose.yml), with `image:` set to the version to run
+- `.env`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` and optionally `LOG_LEVEL` (see `.env.example`). Leave `BOT_CONFIG_PATH` unset. Run `chmod 600 .env`.
+- `config.json`: the server allowlist. The container runs as uid 1000, which must be able to read it.
+
+Then, from that directory:
+
+```bash
+docker compose pull
+docker compose up -d
+docker compose logs -f bot
+```
+
+The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Anything a future feature needs to keep must go in a volume mounted at `/app/data` (add one to `compose.yml` when needed); scratch files go in `/tmp`.
+
+### Updating and rolling back
+
+WUD watches the container and reports newer `0.1.<run>` versions. To update, set the new version in `compose.yml`'s `image:` line, then:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To roll back, set the previous version and run `docker compose up -d` again. Old images stay on the server until pruned.
+
+If a new version fails to start (for example, invalid configuration), the container restarts in a loop, shown as `Restarting` in `docker compose ps`. Check `docker compose logs bot` and roll back. Nothing rolls back automatically.
+
+When an update changes a command's definition, register the commands from the new image:
+
+```bash
+docker compose run --rm bot node src/deploy-commands.js
+```
+
 ## Project structure
 
 ```
+.github/workflows/ci.yml    tests, then builds and publishes the Docker image
+deploy/compose.yml          production Compose file template
+Dockerfile                  production image
 src/
   index.js                  entry point: load config, create client, load events/commands, log in
   deploy-commands.js        registers slash commands globally
