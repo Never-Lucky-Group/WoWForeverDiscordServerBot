@@ -23,8 +23,7 @@ The bot is used mainly in a single server but supports several. It only operates
 npm install
 cp .env.example .env                  # fill in DISCORD_TOKEN and DISCORD_CLIENT_ID
 cp config.example.json config.json    # fill in the allowlisted servers
-npm run deploy-commands               # register slash commands with Discord
-npm run dev                           # start with auto-restart and readable logs
+npm run dev                           # start with auto-restart and readable logs; registers slash commands
 ```
 
 ### Configuration
@@ -54,24 +53,30 @@ npm run dev                           # start with auto-restart and readable log
 
 The test and production servers share one bot application and token. Every running copy of the bot receives events from both servers, so two copies would both answer DMs and race each other on slash commands. To test a branch locally, stop the homelab instance first (`docker compose stop` in its directory on the server, `docker compose start` afterwards).
 
+Slash commands are shared the same way: whichever copy starts last registers its commands for both servers. Starting the homelab instance again after local testing puts production's commands back.
+
 ## Scripts
 
 | Script                    | Description                                                               |
 | ------------------------- | ------------------------------------------------------------------------- |
 | `npm start`               | Run the bot (JSON logs)                                                   |
 | `npm run dev`             | Run with auto-restart on file changes and pretty logs                     |
-| `npm run deploy-commands` | Register slash commands globally (see below)                              |
+| `npm run deploy-commands` | Register slash commands without starting the bot (see below)              |
 | `npm run lint`            | ESLint                                                                    |
 | `npm run format`          | Format all files with Prettier (`format:check` to verify without writing) |
 | `npm test`                | Run the Vitest suite once (`test:watch` to re-run on changes)             |
 
 Both `start` and `dev` load `.env` if it exists; otherwise they read variables from the environment.
 
-### When to run `deploy-commands`
+### Slash command registration
 
-Run it once when setting up the bot, and again whenever a command's **definition** changes: its name, description or options, or when you add or remove a command. Changes inside `execute` do not need it. Commands are registered globally, which is required for them to work in DMs. Discord limits how many commands can be created per day, so the bot does not register them on every start.
+The bot registers its slash commands with Discord every time it starts, in the background after logging in, so Discord always lists the commands of the version that is running. This covers first setup, updates, rollbacks and local `npm run dev`. Commands are registered globally, which is required for them to work in DMs.
 
-Registering again is always safe: it replaces the whole command list. If a new or changed command does not appear afterwards, reload Discord (Ctrl+R).
+Registration replaces the whole command list, so removed commands disappear from Discord too. Re-sending an unchanged list does not count toward Discord's limit of 200 command creates per day; only command names that are new to Discord do. If registration fails, the bot logs an error and keeps running with the list Discord already has, and the next start tries again.
+
+`npm run deploy-commands` registers the commands without starting the bot. It is only a manual fallback.
+
+If a new or changed command does not appear, reload Discord (Ctrl+R).
 
 ## Deployment
 
@@ -116,11 +121,7 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
-The first time, or whenever slash commands are missing in Discord, register them from the running image (see [When to run `deploy-commands`](#when-to-run-deploy-commands)):
-
-```bash
-docker compose run --rm bot node src/deploy-commands.js
-```
+The bot registers its slash commands on startup (see [Slash command registration](#slash-command-registration)). To register them from the image without the running bot, use `docker compose run --rm bot node src/deploy-commands.js`.
 
 The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Anything a future feature needs to keep must go in a volume mounted at `/app/data` (add one to `compose.yml` when needed); scratch files go in `/tmp`.
 
@@ -163,11 +164,7 @@ The first `docker compose up -d` after a WUD update may recreate the container o
 
 To update without WUD, set the new version in `compose.yml`'s `image:` line, then run `docker compose pull` and `docker compose up -d`.
 
-When an update changes a command's definition, register the commands after the update, so they come from the new image:
-
-```bash
-docker compose run --rm bot node src/deploy-commands.js
-```
+Either way, the new version registers its own slash commands when it starts.
 
 To roll back after a WUD update, restore the previous file and recreate the container:
 
@@ -176,7 +173,7 @@ cp compose.yml.back compose.yml
 docker compose up -d
 ```
 
-Or set any earlier version in `compose.yml` and run `docker compose up -d`. If that version has different commands, register them again as above. Old images stay on the server until pruned.
+Or set any earlier version in `compose.yml` and run `docker compose up -d`. The older version registers its own commands when it starts. Old images stay on the server until pruned.
 
 If a new version fails to start (for example, invalid configuration), the container restarts in a loop, shown as `Restarting` in `docker compose ps`. Check `docker compose logs bot` and roll back. Nothing rolls back automatically.
 
@@ -188,13 +185,13 @@ deploy/compose.yml          production Compose file template
 Dockerfile                  production image
 src/
   index.js                  entry point: load config, create client, load events/commands, log in
-  deploy-commands.js        registers slash commands globally
+  deploy-commands.js        registers slash commands without starting the bot (manual fallback)
   config.js                 validates .env and config.json with zod
   client.js                 discord.js client (intents, partials)
   commands/<category>/*.js  slash commands, loaded automatically
   events/*.js               event listeners, loaded automatically
   handlers/                 command dispatcher, DM handler, server allowlist
-  lib/                      shared helpers (logger, membership checks, command builder)
+  lib/                      shared helpers (logger, membership checks, command builder, command registration)
   loaders/                  dynamic loaders for commands/ and events/
 tests/                      Vitest tests
 ```
@@ -223,7 +220,7 @@ export default {
 
 - The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
 - Use `respond()` rather than `interaction.reply()`, because the DM server picker may already have used the first reply.
-- Then run `npm run deploy-commands`.
+- The bot registers it with Discord the next time it starts (`npm run dev` restarts on save). Reload Discord (Ctrl+R) if it does not appear.
 
 ### Adding an event listener
 
