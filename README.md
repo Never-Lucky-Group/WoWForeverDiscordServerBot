@@ -69,27 +69,34 @@ Both `start` and `dev` load `.env` if it exists; otherwise they read variables f
 
 ### When to run `deploy-commands`
 
-Run it only when a command's **definition** changes: its name, description or options, or when you add or remove a command. Changes inside `execute` do not need it. Commands are registered globally, which is required for them to work in DMs. Discord limits how many commands can be created per day, so the bot does not register them on every start.
+Run it once when setting up the bot, and again whenever a command's **definition** changes: its name, description or options, or when you add or remove a command. Changes inside `execute` do not need it. Commands are registered globally, which is required for them to work in DMs. Discord limits how many commands can be created per day, so the bot does not register them on every start.
+
+Registering again is always safe: it replaces the whole command list. If a new or changed command does not appear afterwards, reload Discord (Ctrl+R).
 
 ## Deployment
 
 Production runs the bot as a Docker container on the homelab server. GitHub is the source of truth: the server only pulls published images and never needs this repository.
 
 ```
-push to main → GitHub Actions (lint, format, tests) → Docker build → GHCR → WUD reports the update → you update the server
+merge to main → run CI on main → lint, format, tests → Docker build → GHCR → WUD reports the update → you update the server
 ```
 
 ### CI and images
 
-`.github/workflows/ci.yml` runs lint, format check and tests on every pull request and push to `main`, then builds the Docker image. Pushes to `main` (and manual runs on `main` from the Actions tab) publish it to `ghcr.io/rboothian/wowforeverdiscordserverbot` with three tags:
+`.github/workflows/ci.yml` runs only when started by hand: **Actions → CI → Run workflow**, then pick a branch. Pull requests and merges do not run it. Each run does the lint, format check and tests, then builds the Docker image.
 
-| Tag          | Example       | Use                                                      |
-| ------------ | ------------- | -------------------------------------------------------- |
-| `0.1.<run>`  | `0.1.42`      | Version to run in production; increases with every build |
-| `sha-<hash>` | `sha-1a2b3c4` | Finds the image built from a given commit                |
-| `main`       | `main`        | Always the newest build; not used in production          |
+- **Run on `main`:** publishes the image to `ghcr.io/rboothian/wowforeverdiscordserverbot`. Merging to `main` does not publish anything until you run it.
+- **Run on any other branch:** tests and builds without publishing. Use it to check a branch before merging it.
 
-`MAJOR.MINOR` comes from `package.json`, and the last number is the workflow's run number. The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Run the workflow manually to rebuild on a patched Node base image without a code change.
+Published images get three tags:
+
+| Tag          | Example       | Use                                                       |
+| ------------ | ------------- | --------------------------------------------------------- |
+| `0.1.<run>`  | `0.1.42`      | Version to run in production; increases with every build  |
+| `sha-<hash>` | `sha-1a2b3c4` | Finds the image built from a given commit                 |
+| `main`       | `main`        | Always the newest published build; not used in production |
+
+`MAJOR.MINOR` comes from `package.json`, and the last number is the workflow's run number. Runs on other branches use up run numbers too, so published versions can skip numbers; they always increase. The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Run it on `main` without a code change to rebuild on a patched Node base image.
 
 After the first publish, check the package's visibility under the GitHub profile's **Packages** tab and set it to **Public** if it is not, so the server and WUD can pull it without credentials. The image contains only `src/`, `package.json` and production `node_modules` (see `.dockerignore`), never `.env` or `config.json`.
 
@@ -109,6 +116,12 @@ docker compose up -d
 docker compose logs -f bot
 ```
 
+The first time, or whenever slash commands are missing in Discord, register them from the running image (see [When to run `deploy-commands`](#when-to-run-deploy-commands)):
+
+```bash
+docker compose run --rm bot node src/deploy-commands.js
+```
+
 The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Anything a future feature needs to keep must go in a volume mounted at `/app/data` (add one to `compose.yml` when needed); scratch files go in `/tmp`.
 
 ### Updating and rolling back
@@ -120,15 +133,15 @@ docker compose pull
 docker compose up -d
 ```
 
-To roll back, set the previous version and run `docker compose up -d` again. Old images stay on the server until pruned.
-
-If a new version fails to start (for example, invalid configuration), the container restarts in a loop, shown as `Restarting` in `docker compose ps`. Check `docker compose logs bot` and roll back. Nothing rolls back automatically.
-
-When an update changes a command's definition, register the commands from the new image:
+When an update changes a command's definition, register the commands after `up -d`, so they come from the new image:
 
 ```bash
 docker compose run --rm bot node src/deploy-commands.js
 ```
+
+To roll back, set the previous version and run `docker compose up -d` again. If that version has different commands, register them again as above. Old images stay on the server until pruned.
+
+If a new version fails to start (for example, invalid configuration), the container restarts in a loop, shown as `Restarting` in `docker compose ps`. Check `docker compose logs bot` and roll back. Nothing rolls back automatically.
 
 ## Project structure
 
