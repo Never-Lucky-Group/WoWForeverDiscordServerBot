@@ -35,3 +35,6 @@ services:
       - wud.tag.include=^\d+\.\d+\.\d+$$
       - wud.display.name=WoW Forever bot
       - wud.link.template=https://github.com/RBoothian/WoWForeverDiscordServerBot/commits/main
+      # WUD: the Update button uses WUD's dockercompose trigger named "bot", which rewrites the
+      # image tag in this file and recreates the container. See README → Deployment.
+      - wud.trigger.include=dockercompose.bot
