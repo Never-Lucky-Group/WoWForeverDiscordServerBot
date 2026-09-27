@@ -1,10 +1,8 @@
 name: CI
 
+# Runs only when started from the Actions tab (Actions → CI → Run workflow). Running it on main
+# publishes a new image; running it on any other branch tests and builds without publishing.
 on:
-  push:
-    branches: [main]
-  pull_request:
-  # Manual run on main publishes a fresh image, e.g. to pick up base image security patches.
   workflow_dispatch:
 
 permissions:
@@ -12,8 +10,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded pull request runs, but let every main build finish and publish.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/rboothian/wowforeverdiscordserverbot
@@ -34,8 +31,8 @@ jobs:
       - run: npm run format:check
       - run: npm test
 
-  # Builds the image on every run so pull requests catch Dockerfile problems; only pushes and
-  # manual runs on main publish it to GHCR.
+  # Builds the image on every run so a branch can be checked for Dockerfile problems before
+  # merging; only runs on main publish it to GHCR.
   image:
     needs: check
     runs-on: ubuntu-latest
@@ -43,7 +40,7 @@ jobs:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      PUBLISH: ${{ github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v7
         with:
