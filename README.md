@@ -78,7 +78,7 @@ Registering again is always safe: it replaces the whole command list. If a new o
 Production runs the bot as a Docker container on the homelab server. GitHub is the source of truth: the server only pulls published images and never needs this repository.
 
 ```
-merge to main → run CI on main → lint, format, tests → Docker build → GHCR → WUD reports the update → you update the server
+merge to main → run CI on main → lint, format, tests → Docker build → GHCR → WUD reports the update → you click Update in WUD
 ```
 
 ### CI and images
@@ -124,22 +124,59 @@ docker compose run --rm bot node src/deploy-commands.js
 
 The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Anything a future feature needs to keep must go in a volume mounted at `/app/data` (add one to `compose.yml` when needed); scratch files go in `/tmp`.
 
+### WUD setup
+
+[WUD](https://getwud.github.io/wud/) (What's Up Docker) watches the container, reports newer `0.1.<run>` versions and provides the **Update** button. Its Compose file on the server is separate from this repository. For the button to work, WUD needs a `dockercompose` trigger named `bot` and access to the bot's directory:
+
+```yaml
+services:
+  wud:
+    environment:
+      # Only when the Update button is clicked, never automatically
+      WUD_TRIGGER_DOCKERCOMPOSE_BOT_AUTO: 'false'
+      # Only containers labelled wud.trigger.include=dockercompose.bot (the bot)
+      WUD_TRIGGER_DOCKERCOMPOSE_BOT_INCLUDEBYDEFAULT: 'false'
+      # Keep the previous compose.yml as compose.yml.back
+      WUD_TRIGGER_DOCKERCOMPOSE_BOT_BACKUP: 'true'
+    volumes:
+      # Same path inside WUD as on the host, read-write, so WUD can find and edit compose.yml
+      - /opt/discord-bot:/opt/discord-bot
+```
+
+The bot's `compose.yml` already has the `wud.trigger.include=dockercompose.bot` label. WUD also needs the Docker socket mounted, which it already has for watching containers. If the bot's directory is not `/opt/discord-bot`, use its path on both sides of the volume.
+
 ### Updating and rolling back
 
-WUD watches the container and reports newer `0.1.<run>` versions. To update, set the new version in `compose.yml`'s `image:` line, then:
+To update, open WUD and click **Update** on the bot. WUD then:
+
+1. pulls the new image (if the pull fails, nothing else changes);
+2. copies `compose.yml` to `compose.yml.back` and changes the `image:` tag in `compose.yml` to the new version;
+3. stops and removes the old container, then creates and starts a new one with the new image and the same settings.
+
+WUD copies the old container's settings rather than rereading the Compose file, so it only changes the image. After editing `.env`, or anything in `compose.yml` other than the version, apply it yourself from the bot's directory:
 
 ```bash
-docker compose pull
 docker compose up -d
 ```
 
-When an update changes a command's definition, register the commands after `up -d`, so they come from the new image:
+The first `docker compose up -d` after a WUD update may recreate the container once even with no changes. This is harmless.
+
+To update without WUD, set the new version in `compose.yml`'s `image:` line, then run `docker compose pull` and `docker compose up -d`.
+
+When an update changes a command's definition, register the commands after the update, so they come from the new image:
 
 ```bash
 docker compose run --rm bot node src/deploy-commands.js
 ```
 
-To roll back, set the previous version and run `docker compose up -d` again. If that version has different commands, register them again as above. Old images stay on the server until pruned.
+To roll back after a WUD update, restore the previous file and recreate the container:
+
+```bash
+cp compose.yml.back compose.yml
+docker compose up -d
+```
+
+Or set any earlier version in `compose.yml` and run `docker compose up -d`. If that version has different commands, register them again as above. Old images stay on the server until pruned.
 
 If a new version fails to start (for example, invalid configuration), the container restarts in a loop, shown as `Restarting` in `docker compose ps`. Check `docker compose logs bot` and roll back. Nothing rolls back automatically.
 
