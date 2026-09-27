@@ -1,6 +1,7 @@
 import { createClient } from './client.js';
 import { ConfigError, loadBotConfig, loadEnv } from './config.js';
 import { logger } from './lib/logger.js';
+import { registerCommandsOnStartup } from './lib/registerCommands.js';
 import { loadCommands } from './loaders/commands.js';
 import { loadEvents } from './loaders/events.js';
 
@@ -24,6 +25,10 @@ async function main() {
 
   registerShutdownHandlers(client);
   await client.login(env.token);
+
+  // Runs in the background so registration never delays the bot coming online; client.rest has
+  // the token once login() resolves.
+  void registerCommandsOnStartup(client.rest, env.clientId, client.commands);
 }
 
 function registerShutdownHandlers(client) {
