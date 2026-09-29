@@ -1,11 +1,13 @@
 import { logger } from '../lib/logger.js';
+import { checkJoinRole } from './joinRole.js';
 
 export function isAllowlisted(guild) {
   return guild.client.botConfig.guilds.has(guild.id);
 }
 
 // Called for every guild at startup and whenever the bot joins one. Leaves guilds that are not
-// allowlisted; for allowlisted guilds, loads the full member list into the cache.
+// allowlisted; for allowlisted guilds, loads the full member list into the cache and checks that
+// the bot can assign the join role.
 // Never throws: failures are logged so one guild cannot block the others.
 export async function prepareGuild(guild) {
   const guildInfo = { guildId: guild.id, guildName: guild.name };
@@ -29,4 +31,6 @@ export async function prepareGuild(guild) {
       'Failed to cache guild members; DM membership checks for this guild may miss members',
     );
   }
+
+  checkJoinRole(guild, guild.client.botConfig.guilds.get(guild.id));
 }

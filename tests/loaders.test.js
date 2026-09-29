@@ -70,7 +70,13 @@ describe('loadEvents', () => {
     const onceEvents = client.once.mock.calls.map(([name]) => name);
     expect(count).toBe(onEvents.length + onceEvents.length);
     expect(onceEvents).toEqual(['clientReady']);
-    expect(onEvents.sort()).toEqual(['error', 'guildCreate', 'interactionCreate', 'messageCreate']);
+    expect(onEvents.sort()).toEqual([
+      'error',
+      'guildCreate',
+      'guildMemberAdd',
+      'interactionCreate',
+      'messageCreate',
+    ]);
   });
 });
 
