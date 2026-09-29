@@ -73,6 +73,25 @@ describe('parseBotConfig', () => {
     );
   });
 
+  it('accepts an optional join role', () => {
+    const joinRoleId = '400000000000000001';
+    const config = parseBotConfig({ guilds: [{ ...GUILD_A, joinRoleId }, GUILD_B] });
+    expect(config.guilds.get(GUILD_A.id)?.joinRoleId).toBe(joinRoleId);
+    expect(config.guilds.get(GUILD_B.id)?.joinRoleId).toBeUndefined();
+  });
+
+  it('rejects the @everyone role as the join role', () => {
+    expect(() => parseBotConfig({ guilds: [{ ...GUILD_A, joinRoleId: GUILD_A.id }] })).toThrow(
+      /joinRoleId is the @everyone role/,
+    );
+  });
+
+  it('rejects the Officer role as the join role', () => {
+    expect(() =>
+      parseBotConfig({ guilds: [{ ...GUILD_A, joinRoleId: GUILD_A.officerRoleId }] }),
+    ).toThrow(/must not be the Officer role/);
+  });
+
   it('rejects unknown keys so typos are caught', () => {
     expect(() =>
       parseBotConfig({ guilds: [{ id: GUILD_A.id, officerRoleID: GUILD_A.officerRoleId }] }),

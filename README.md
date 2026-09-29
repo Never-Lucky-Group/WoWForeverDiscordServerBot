@@ -11,6 +11,7 @@ The bot is used mainly in a single server but supports several. It only operates
   - In a DM, it runs for the allowlisted server where the user is an Officer. If they are an Officer in several, the bot asks which server to use.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **Messages in server channels** are ignored for now.
+- **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
 
 ## Requirements
 
@@ -41,13 +42,21 @@ npm run dev                           # start with auto-restart and readable log
 
 ```json
 {
-  "guilds": [{ "name": "Production server", "id": "SERVER_ID", "officerRoleId": "ROLE_ID" }]
+  "guilds": [
+    {
+      "name": "Production server",
+      "id": "SERVER_ID",
+      "officerRoleId": "ROLE_ID",
+      "joinRoleId": "ROLE_ID"
+    }
+  ]
 }
 ```
 
 - `name` is only a label for you; the bot uses the server's live name.
 - Get IDs by enabling _Developer Mode_ in Discord (User Settings → Advanced), then right-clicking a server or role → _Copy ID_.
 - The bot refuses to start with an empty allowlist. With no servers listed, it would leave every server.
+- `joinRoleId` is optional. Leave it out and new members of that server get no role. It must not be the Officer role. To assign it, the bot needs the **Manage Roles** permission, and its own role must be above the join role in the server's role list. The bot checks both at startup and logs a warning if either is missing.
 
 ### Run only one instance at a time
 
@@ -190,7 +199,7 @@ src/
   client.js                 discord.js client (intents, partials)
   commands/<category>/*.js  slash commands, loaded automatically
   events/*.js               event listeners, loaded automatically
-  handlers/                 command dispatcher, DM handler, server allowlist
+  handlers/                 command dispatcher, DM handler, server allowlist, join role
   lib/                      shared helpers (logger, membership checks, command builder, command registration)
   loaders/                  dynamic loaders for commands/ and events/
 tests/                      Vitest tests

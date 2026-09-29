@@ -40,11 +40,22 @@ const guildConfigSchema = z
     name: z.string().optional(),
     id: snowflake,
     officerRoleId: snowflake,
+    // Optional: role given to every human member who joins the guild.
+    joinRoleId: snowflake.optional(),
   })
   // A guild's @everyone role shares the guild's ID; using it would make every member an Officer.
   .refine((guild) => guild.officerRoleId !== guild.id, {
     message: 'officerRoleId is the @everyone role (same as the guild ID)',
     path: ['officerRoleId'],
+  })
+  .refine((guild) => guild.joinRoleId !== guild.id, {
+    message: 'joinRoleId is the @everyone role (same as the guild ID)',
+    path: ['joinRoleId'],
+  })
+  // Would make every member who joins an Officer.
+  .refine((guild) => guild.joinRoleId !== guild.officerRoleId, {
+    message: 'joinRoleId must not be the Officer role',
+    path: ['joinRoleId'],
   });
 
 const botConfigFileSchema = z
@@ -61,7 +72,8 @@ const botConfigFileSchema = z
     },
   );
 
-// Returns { guilds }: a Map of guild ID → { name?, id, officerRoleId } for every allowlisted guild.
+// Returns { guilds }: a Map of guild ID → { name?, id, officerRoleId, joinRoleId? } for every
+// allowlisted guild.
 export function parseBotConfig(raw) {
   const result = botConfigFileSchema.safeParse(raw);
   if (!result.success) {

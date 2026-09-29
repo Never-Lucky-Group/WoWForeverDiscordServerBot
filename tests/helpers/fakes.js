@@ -19,20 +19,27 @@ export function makeBotConfig(...guilds) {
   return { guilds: new Map(guilds.map((guild) => [guild.id, guild])) };
 }
 
-export function fakeMember(userId, roleIds = []) {
+export function fakeMember(userId, roleIds = [], { bot = false, guild } = {}) {
   return {
     id: userId,
-    roles: { cache: new Collection(roleIds.map((roleId) => [roleId, { id: roleId }])) },
+    user: { id: userId, bot },
+    guild,
+    roles: {
+      cache: new Collection(roleIds.map((roleId) => [roleId, { id: roleId }])),
+      add: vi.fn(() => Promise.resolve()),
+    },
   };
 }
 
-export function fakeGuild(config, members = []) {
+// `roles` are the guild's roles, e.g. [{ id, editable }].
+export function fakeGuild(config, members = [], roles = []) {
   const cache = new Collection(members.map((member) => [member.id, member]));
   return {
     id: config.id,
     name: config.name ?? 'Unnamed guild',
     client: undefined,
     members: { cache, fetch: vi.fn(() => Promise.resolve(cache)) },
+    roles: { cache: new Collection(roles.map((role) => [role.id, role])) },
     leave: vi.fn(() => Promise.resolve()),
   };
 }

@@ -3,12 +3,14 @@
     {
       "name": "Production server",
       "id": "000000000000000000",
-      "officerRoleId": "000000000000000000"
+      "officerRoleId": "000000000000000000",
+      "joinRoleId": "000000000000000000"
     },
     {
       "name": "Test server",
       "id": "111111111111111111",
-      "officerRoleId": "111111111111111111"
+      "officerRoleId": "111111111111111111",
+      "joinRoleId": "111111111111111111"
     }
   ]
 }
