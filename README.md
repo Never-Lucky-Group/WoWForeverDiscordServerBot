@@ -6,9 +6,8 @@ The bot is used mainly in a single server but supports several. It only operates
 
 ## Current behavior
 
-- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role**. They work in servers and in DMs with the bot.
-  - In a server, the command runs for that server.
-  - In a DM, it runs for the allowlisted server where the user is an Officer. If they are an Officer in several, the bot asks which server to use.
+- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role** and work only in servers. The command runs for the server it is used in.
+  - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user is an Officer, and if they are an Officer in several, the bot asks which server to use.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **Messages in server channels** are ignored for now.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
@@ -79,7 +78,7 @@ Both `start` and `dev` load `.env` if it exists; otherwise they read variables f
 
 ### Slash command registration
 
-The bot registers its slash commands with Discord every time it starts, in the background after logging in, so Discord always lists the commands of the version that is running. This covers first setup, updates, rollbacks and local `npm run dev`. Commands are registered globally, which is required for them to work in DMs.
+The bot registers its slash commands with Discord every time it starts, in the background after logging in, so Discord always lists the commands of the version that is running. This covers first setup, updates, rollbacks and local `npm run dev`. Commands are registered globally; because the bot leaves servers that are not allowlisted, they only show up in allowlisted servers.
 
 Registration replaces the whole command list, so removed commands disappear from Discord too. Re-sending an unchanged list does not count toward Discord's limit of 200 command creates per day; only command names that are new to Discord do. If registration fails, the bot logs an error and keeps running with the list Discord already has, and the next start tries again.
 
@@ -228,7 +227,7 @@ export default {
 ```
 
 - The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
-- Use `respond()` rather than `interaction.reply()`, because the DM server picker may already have used the first reply.
+- Use `respond()` rather than `interaction.reply()`, because the first reply may already have been used (for example by a deferred reply, or by the DM server picker if DM commands are re-enabled).
 - The bot registers it with Discord the next time it starts (`npm run dev` restarts on save). Reload Discord (Ctrl+R) if it does not appear.
 
 ### Adding an event listener

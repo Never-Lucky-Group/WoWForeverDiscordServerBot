@@ -139,6 +139,8 @@ describe('handleChatInputCommand', () => {
     });
   });
 
+  // DM commands are disabled for now (see createOfficerCommand in src/lib/command.js), but the
+  // dispatcher keeps its DM path so they can be re-enabled; these tests keep it working.
   describe('in a DM', () => {
     it('denies a user who is not in any allowlisted server', async () => {
       const { command, interaction } = setupDm(null, null);
