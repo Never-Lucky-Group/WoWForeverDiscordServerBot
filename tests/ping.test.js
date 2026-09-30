@@ -14,10 +14,10 @@ function setup({ ping: latency, replied = false }) {
 }
 
 describe('/ping', () => {
-  it('registers as an Officer command usable in servers and bot DMs', () => {
+  it('registers as an Officer command usable in servers only', () => {
     expect(ping.data.toJSON()).toMatchObject({
       name: 'ping',
-      contexts: [0, 1], // Guild, BotDM
+      contexts: [0], // Guild
       integration_types: [0], // GuildInstall
       default_member_permissions: '0',
     });
@@ -39,7 +39,7 @@ describe('/ping', () => {
     );
   });
 
-  it('follows up when the server picker already replied', async () => {
+  it('follows up when the initial reply was already used', async () => {
     const { interaction, run } = setup({ ping: 42, replied: true });
     await run();
     expect(interaction.reply).not.toHaveBeenCalled();

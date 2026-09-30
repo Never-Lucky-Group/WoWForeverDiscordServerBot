@@ -6,9 +6,8 @@ The bot is used mainly in a single server but supports several. It only operates
 
 ## Current behavior
 
-- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role**. They work in servers and in DMs with the bot.
-  - In a server, the command runs for that server.
-  - In a DM, it runs for the allowlisted server where the user is an Officer. If they are an Officer in several, the bot asks which server to use.
+- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role** and work only in servers. The command runs for the server it is used in.
+  - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user is an Officer, and if they are an Officer in several, the bot asks which server to use.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **Messages in server channels** are ignored for now.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
@@ -20,12 +19,42 @@ The bot is used mainly in a single server but supports several. It only operates
 
 ## Local setup
 
+For local development, run your own test bot: a separate Discord application with its own token, added to a test server. Never run the code locally with the production bot's token (see [Test bots and production](#test-bots-and-production)).
+
+### Create a test bot
+
+1. Turn on two-factor authentication for your Discord account (User Settings → My Account). In servers that require 2FA for moderator actions, Discord blocks permissions such as **Manage Roles** for bots whose owner has no 2FA, so the join role would not be assigned.
+2. In the [Discord Developer Portal](https://discord.com/developers/applications), click **New Application**.
+3. On the **Installation** tab, set **Install Link** to **None** and turn off **User Install**.
+4. On the **Bot** tab:
+   - Turn off **Public Bot**, so only you can add the bot to servers. This only works after the install link is set to **None**.
+   - Turn on all three **Privileged Gateway Intents**: **Presence Intent**, **Server Members Intent** and **Message Content Intent**. The bot fails to log in if any of them is off.
+5. On the **General Information** tab, copy the **Application ID**.
+6. Open this link with your Application ID in place of `APPLICATION_ID`, then pick your test server:
+
+   ```
+   https://discord.com/oauth2/authorize?client_id=APPLICATION_ID&scope=bot+applications.commands&permissions=8542101273308401
+   ```
+
+   It requests the same permissions as the production bot, so a missing permission shows up in testing rather than after deploying.
+
+7. In the test server:
+   - Under **Server Settings → Roles**, drag the bot's role above the join role, so the bot can assign it.
+   - Under **Server Settings → Integrations →** your bot **→ Roles & Members**, turn off **@everyone** and add the **Officer** role, so only Officers see the bot's commands.
+
+### Run it
+
 ```bash
 npm install
 cp .env.example .env                  # fill in DISCORD_TOKEN and DISCORD_CLIENT_ID
-cp config.example.json config.json    # fill in the allowlisted servers
+cp config.example.json config.json    # list only your test server
 npm run dev                           # start with auto-restart and readable logs; registers slash commands
 ```
+
+- In `.env`, set `DISCORD_CLIENT_ID` to the Application ID. For `DISCORD_TOKEN`, go to the Developer Portal's **Bot** tab, click **Reset Token** and copy the token. Discord shows it only once; if you lose it, reset it again.
+- In `config.json`, list only your test server, with its Officer role and join role (see [Configuration](#configuration)).
+
+On startup, the logs should show the bot logging in, `Cached guild members` for the test server and `Registered global application commands`, with no warnings. Reload Discord (Ctrl+R) if the commands do not appear.
 
 ### Configuration
 
@@ -58,11 +87,11 @@ npm run dev                           # start with auto-restart and readable log
 - The bot refuses to start with an empty allowlist. With no servers listed, it would leave every server.
 - `joinRoleId` is optional. Leave it out and new members of that server get no role. It must not be the Officer role. To assign it, the bot needs the **Manage Roles** permission, and its own role must be above the join role in the server's role list. The bot checks both at startup and logs a warning if either is missing.
 
-### Run only one instance at a time
+### Test bots and production
 
-The test and production servers share one bot application and token. Every running copy of the bot receives events from both servers, so two copies would both answer DMs and race each other on slash commands. To test a branch locally, stop the homelab instance first (`docker compose stop` in its directory on the server, `docker compose start` afterwards).
+Each Discord application is a separate bot with its own token and its own list of slash commands. A test bot only receives events from the servers it has been added to, and registering its commands never changes the production bot's commands, so testing locally does not affect production.
 
-Slash commands are shared the same way: whichever copy starts last registers its commands for both servers. Starting the homelab instance again after local testing puts production's commands back.
+Keep the production token on the production server only. Two running copies of the bot with the same token both receive every event, so both would answer DMs and race each other on commands.
 
 ## Scripts
 
@@ -79,7 +108,7 @@ Both `start` and `dev` load `.env` if it exists; otherwise they read variables f
 
 ### Slash command registration
 
-The bot registers its slash commands with Discord every time it starts, in the background after logging in, so Discord always lists the commands of the version that is running. This covers first setup, updates, rollbacks and local `npm run dev`. Commands are registered globally, which is required for them to work in DMs.
+The bot registers its slash commands with Discord every time it starts, in the background after logging in, so Discord always lists the commands of the version that is running. This covers first setup, updates, rollbacks and local `npm run dev`. Commands are registered globally; because the bot leaves servers that are not allowlisted, they only show up in allowlisted servers.
 
 Registration replaces the whole command list, so removed commands disappear from Discord too. Re-sending an unchanged list does not count toward Discord's limit of 200 command creates per day; only command names that are new to Discord do. If registration fails, the bot logs an error and keeps running with the list Discord already has, and the next start tries again.
 
@@ -228,7 +257,7 @@ export default {
 ```
 
 - The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
-- Use `respond()` rather than `interaction.reply()`, because the DM server picker may already have used the first reply.
+- Use `respond()` rather than `interaction.reply()`, because the first reply may already have been used (for example by a deferred reply, or by the DM server picker if DM commands are re-enabled).
 - The bot registers it with Discord the next time it starts (`npm run dev` restarts on save). Reload Discord (Ctrl+R) if it does not appear.
 
 ### Adding an event listener

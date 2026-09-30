@@ -16,8 +16,8 @@ export const PICKER_TIMEOUT_MESSAGE =
 export const PICKER_TIMEOUT_MS = 60_000;
 
 // Central slash command dispatcher: looks up the command, resolves which allowlisted server it
-// runs for (asking in DMs when the user is an Officer in several), enforces the Officer role,
-// then runs it. Any error is logged and reported to the user.
+// runs for (asking in DMs when the user is an Officer in several; DM commands are currently
+// disabled), enforces the Officer role, then runs it. Any error is logged and reported to the user.
 export async function handleChatInputCommand(interaction) {
   const command = interaction.client.commands.get(interaction.commandName);
   if (!command) {
@@ -45,6 +45,10 @@ export async function handleChatInputCommand(interaction) {
 
 // Returns { guild, member, guildConfig } to run the command in, or null if the user was denied
 // or cancelled.
+//
+// Commands in DMs are disabled for now (see createOfficerCommand in lib/command.js), so Discord
+// does not send DM command interactions and the DM path below, including promptForGuild, is not
+// reached. It is kept so the feature can be re-enabled by changing only the command contexts.
 async function resolveCommandContext(interaction) {
   if (interaction.inGuild()) {
     const guildConfig = interaction.client.botConfig.guilds.get(interaction.guildId);
@@ -68,7 +72,7 @@ async function resolveCommandContext(interaction) {
   return promptForGuild(interaction, memberships);
 }
 
-// Asks a DM user which server to run the command in.
+// Asks a DM user which server to run the command in. Not reached while DM commands are disabled.
 async function promptForGuild(interaction, memberships) {
   const customId = `guild-picker:${interaction.id}`;
   const menu = new StringSelectMenuBuilder()

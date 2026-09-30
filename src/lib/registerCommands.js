@@ -2,9 +2,11 @@ import { Routes } from 'discord.js';
 import { logger } from './logger.js';
 
 // Replaces the application's global slash commands with `commands` (the Collection returned by
-// loadCommands). Global registration is required for commands to work in DMs. Commands missing
-// from the list are removed from Discord. Re-sending an unchanged list does not count toward
-// Discord's daily limit of 200 command creates; only command names that are new to Discord do.
+// loadCommands). Global registration also works for DM commands if they are re-enabled; the bot
+// leaves servers that are not allowlisted, so commands only show up in allowlisted servers.
+// Commands missing from the list are removed from Discord. Re-sending an unchanged list does not
+// count toward Discord's daily limit of 200 command creates; only command names that are new to
+// Discord do.
 export async function registerCommands(rest, clientId, commands) {
   const body = commands.map((command) => command.data.toJSON());
   logger.info({ commands: [...commands.keys()] }, 'Registering global application commands');
