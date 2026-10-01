@@ -14,6 +14,8 @@ export function createClient() {
       GatewayIntentBits.DirectMessages,
     ],
     // DM channels are not cached until used; without this partial, DM messageCreate never fires.
-    partials: [Partials.Channel],
+    // Without the Message partial, messageUpdate never fires for edits to uncached messages, such
+    // as those sent before the bot started.
+    partials: [Partials.Channel, Partials.Message],
   });
 }
