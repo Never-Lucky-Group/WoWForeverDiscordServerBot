@@ -76,6 +76,7 @@ describe('loadEvents', () => {
       'guildMemberAdd',
       'interactionCreate',
       'messageCreate',
+      'messageUpdate',
     ]);
   });
 });

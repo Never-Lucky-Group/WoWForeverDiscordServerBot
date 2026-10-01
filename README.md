@@ -9,7 +9,6 @@ The bot is used mainly in a single server but supports several. It only operates
 - **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role** and work only in servers. The command runs for the server it is used in.
   - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user is an Officer, and if they are an Officer in several, the bot asks which server to use.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
-- **Messages in server channels** are ignored for now.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
 
 ## Requirements
