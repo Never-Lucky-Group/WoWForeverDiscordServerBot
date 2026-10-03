@@ -87,11 +87,23 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "### Deploying \`$tag\` (\`${sha:0:7}\`)" >> "$GITHUB_STEP_SUMMARY"
 
+  # Same checks as the Test workflow, run against the tagged commit being released.
   test:
     needs: resolve
-    uses: ./.github/workflows/test.yml
-    with:
-      ref: ${{ needs.resolve.outputs.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
 
   # Publishing is the production deploy: WUD offers every new version tag as an update. The
   # production environment is where a required-reviewer approval gate and a main-only deployment

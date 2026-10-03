@@ -125,10 +125,10 @@ merge to main → tag a release → run Build and Deploy → tests → Docker bu
 
 ### Workflows
 
-| Workflow         | File                           | Runs                           | Does                                              |
-| ---------------- | ------------------------------ | ------------------------------ | ------------------------------------------------- |
-| Test             | `.github/workflows/test.yml`   | every pull request, or by hand | lint, format check and unit tests                 |
-| Build and Deploy | `.github/workflows/deploy.yml` | only by hand, from `main`      | tests a release tag, then builds and publishes it |
+| Workflow         | File                           | Runs                      | Does                                              |
+| ---------------- | ------------------------------ | ------------------------- | ------------------------------------------------- |
+| Test             | `.github/workflows/test.yml`   | every pull request        | lint, format check and unit tests                 |
+| Build and Deploy | `.github/workflows/deploy.yml` | only by hand, from `main` | tests a release tag, then builds and publishes it |
 
 ### Releasing
 
@@ -143,7 +143,9 @@ Deploys always come from a release tag, never from whatever is on a branch.
 
 3. **Actions → Build and Deploy → Run workflow** on `main`. Enter the tag in the **tag** box, or leave it empty to deploy the highest SemVer tag.
 
-The workflow refuses a tag that is not `MAJOR.MINOR.PATCH` (a leading `v` is fine), does not exist, or is not on `main`'s history. It runs the Test workflow against the tag, then the `deploy` job, which runs in the `production` environment, builds the image from the tagged commit and publishes it to `ghcr.io/rboothian/wowforeverdiscordserverbot`. New versions must be higher than every earlier one, since WUD only offers higher versions as updates.
+The workflow refuses a tag that is not `MAJOR.MINOR.PATCH` (a leading `v` is fine), does not exist, or is not on `main`'s history. It runs the lint, format check and tests against the tagged commit, then the `deploy` job, which runs in the `production` environment, builds the image from the tagged commit and publishes it to `ghcr.io/rboothian/wowforeverdiscordserverbot`. New versions must be higher than every earlier one, since WUD only offers higher versions as updates.
+
+To block merging until tests pass, add the `test` check as a required status check on `main` (**Settings → Rules** or **Branches**).
 
 The `production` environment is ready for an approval gate: in **Settings → Environments → production**, add required reviewers and restrict deployment branches to `main`. The `deploy` job then waits for approval before publishing.
 

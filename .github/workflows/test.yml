@@ -1,26 +1,16 @@
 name: Test
 
-# Lint, format check and unit tests. Runs on every pull request, and is called by the
-# Build and Deploy workflow so a release is always tested before its image is published.
+# Lint, format check and unit tests on every pull request, against the PR's own code.
 on:
   pull_request:
-  workflow_dispatch:
-  workflow_call:
-    inputs:
-      ref:
-        description: Git ref (tag, branch or SHA) to test. Defaults to the triggering ref.
-        type: string
-        required: false
-        default: ''
 
 permissions:
   contents: read
 
-# Prefixed with "test-" so it never shares a group with a calling workflow (that would deadlock).
-# Superseded pushes to the same pull request cancel the older run.
+# A new push to the same pull request cancels the older run.
 concurrency:
-  group: test-${{ github.event.pull_request.number || github.ref }}-${{ inputs.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -28,7 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
