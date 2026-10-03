@@ -1,0 +1,40 @@
+name: Test
+
+# Lint, format check and unit tests. Runs on every pull request, and is called by the
+# Build and Deploy workflow so a release is always tested before its image is published.
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (tag, branch or SHA) to test. Defaults to the triggering ref.
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Prefixed with "test-" so it never shares a group with a calling workflow (that would deadlock).
+# Superseded pushes to the same pull request cancel the older run.
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}-${{ inputs.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
