@@ -120,25 +120,41 @@ If a new or changed command does not appear, reload Discord (Ctrl+R).
 Production runs the bot as a Docker container on the homelab server. GitHub is the source of truth: the server only pulls published images and never needs this repository.
 
 ```
-merge to main → run CI on main → lint, format, tests → Docker build → GHCR → WUD reports the update → you click Update in WUD
+merge to main → tag a release → run Build and Deploy → tests → Docker build → GHCR → WUD reports the update → you click Update in WUD
 ```
 
-### CI and images
+### Workflows
 
-`.github/workflows/ci.yml` runs only when started by hand: **Actions → CI → Run workflow**, then pick a branch. Pull requests and merges do not run it. Each run does the lint, format check and tests, then builds the Docker image.
+| Workflow         | File                           | Runs                           | Does                                              |
+| ---------------- | ------------------------------ | ------------------------------ | ------------------------------------------------- |
+| Test             | `.github/workflows/test.yml`   | every pull request, or by hand | lint, format check and unit tests                 |
+| Build and Deploy | `.github/workflows/deploy.yml` | only by hand, from `main`      | tests a release tag, then builds and publishes it |
 
-- **Run on `main`:** publishes the image to `ghcr.io/rboothian/wowforeverdiscordserverbot`. Merging to `main` does not publish anything until you run it.
-- **Run on any other branch:** tests and builds without publishing. Use it to check a branch before merging it.
+### Releasing
 
-Published images get three tags:
+Deploys always come from a release tag, never from whatever is on a branch.
+
+1. Merge to `main`.
+2. Tag the merged commit with a SemVer version and push it, or create a GitHub release with that tag:
+
+   ```bash
+   git tag v0.2.0 && git push origin v0.2.0
+   ```
+
+3. **Actions → Build and Deploy → Run workflow** on `main`. Enter the tag in the **tag** box, or leave it empty to deploy the highest SemVer tag.
+
+The workflow refuses a tag that is not `MAJOR.MINOR.PATCH` (a leading `v` is fine), does not exist, or is not on `main`'s history. It runs the Test workflow against the tag, then the `deploy` job, which runs in the `production` environment, builds the image from the tagged commit and publishes it to `ghcr.io/rboothian/wowforeverdiscordserverbot`. New versions must be higher than every earlier one, since WUD only offers higher versions as updates.
+
+The `production` environment is ready for an approval gate: in **Settings → Environments → production**, add required reviewers and restrict deployment branches to `main`. The `deploy` job then waits for approval before publishing.
+
+Published images get two tags:
 
 | Tag          | Example       | Use                                                       |
 | ------------ | ------------- | --------------------------------------------------------- |
-| `0.1.<run>`  | `0.1.42`      | Version to run in production; increases with every build  |
+| `<version>`  | `0.2.0`       | Version to run in production; the git tag without its `v` |
 | `sha-<hash>` | `sha-1a2b3c4` | Finds the image built from a given commit                 |
-| `main`       | `main`        | Always the newest published build; not used in production |
 
-`MAJOR.MINOR` comes from `package.json`, and the last number is the workflow's run number. Runs on other branches use up run numbers too, so published versions can skip numbers; they always increase. The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Run it on `main` without a code change to rebuild on a patched Node base image.
+The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Deploying an existing tag again rebuilds it on the current Node base image and replaces that version's image.
 
 After the first publish, check the package's visibility under the GitHub profile's **Packages** tab and set it to **Public** if it is not, so the server and WUD can pull it without credentials. The image contains only `src/`, `package.json` and production `node_modules` (see `.dockerignore`), never `.env` or `config.json`.
 
@@ -164,7 +180,7 @@ The container has no open ports and no access to the Docker socket, runs as a no
 
 ### WUD setup
 
-[WUD](https://getwud.github.io/wud/) (What's Up Docker) watches the container, reports newer `0.1.<run>` versions and provides the **Update** button. Its Compose file on the server is separate from this repository. For the button to work, WUD needs a `dockercompose` trigger named `bot` and access to the bot's directory:
+[WUD](https://getwud.github.io/wud/) (What's Up Docker) watches the container, reports newer versions and provides the **Update** button. Its Compose file on the server is separate from this repository. For the button to work, WUD needs a `dockercompose` trigger named `bot` and access to the bot's directory:
 
 ```yaml
 services:
@@ -217,7 +233,8 @@ If a new version fails to start (for example, invalid configuration), the contai
 ## Project structure
 
 ```
-.github/workflows/ci.yml    tests, then builds and publishes the Docker image
+.github/workflows/test.yml  lint, format check and unit tests on every pull request
+.github/workflows/deploy.yml tests a release tag, then builds and publishes its Docker image
 deploy/compose.yml          production Compose file template
 Dockerfile                  production image
 src/
