@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/rboothian/wowforeverdiscordserverbot
+  IMAGE: ghcr.io/never-lucky-group/wowforeverdiscordserverbot
 
 jobs:
   # Turns the input into a concrete tag, version and commit, and refuses anything that is not a
@@ -113,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://github.com/RBoothian/WoWForeverDiscordServerBot/pkgs/container/wowforeverdiscordserverbot
+      url: https://github.com/Never-Lucky-Group/WoWForeverDiscordServerBot/pkgs/container/wowforeverdiscordserverbot
     permissions:
       contents: read
       packages: write

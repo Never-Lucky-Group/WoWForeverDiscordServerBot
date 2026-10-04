@@ -143,7 +143,7 @@ Deploys always come from a release tag, never from whatever is on a branch.
 
 3. **Actions → Build and Deploy → Run workflow** on `main`. Enter the tag in the **tag** box, or leave it empty to deploy the highest SemVer tag.
 
-The workflow refuses a tag that is not `MAJOR.MINOR.PATCH` (a leading `v` is fine), does not exist, or is not on `main`'s history. It runs the lint, format check and tests against the tagged commit, then the `deploy` job, which runs in the `production` environment, builds the image from the tagged commit and publishes it to `ghcr.io/rboothian/wowforeverdiscordserverbot`. New versions must be higher than every earlier one, since WUD only offers higher versions as updates.
+The workflow refuses a tag that is not `MAJOR.MINOR.PATCH` (a leading `v` is fine), does not exist, or is not on `main`'s history. It runs the lint, format check and tests against the tagged commit, then the `deploy` job, which runs in the `production` environment, builds the image from the tagged commit and publishes it to `ghcr.io/never-lucky-group/wowforeverdiscordserverbot`. New versions must be higher than every earlier one, since WUD only offers higher versions as updates.
 
 To block merging until tests pass, add the `test` check as a required status check on `main` (**Settings → Rules** or **Branches**).
 
@@ -158,7 +158,7 @@ Published images get two tags:
 
 The workflow logs in to GHCR with its built-in `GITHUB_TOKEN`, so no registry credentials are stored anywhere. Deploying an existing tag again rebuilds it on the current Node base image and replaces that version's image.
 
-After the first publish, check the package's visibility under the GitHub profile's **Packages** tab and set it to **Public** if it is not, so the server and WUD can pull it without credentials. The image contains only `src/`, `package.json` and production `node_modules` (see `.dockerignore`), never `.env` or `config.json`.
+After the first publish, check the package's visibility under the Never-Lucky-Group organization's **Packages** tab and set it to **Public** if it is not, so the server and WUD can pull it without credentials. If **Public** is not offered, an organization owner must allow public packages under the organization's **Settings → Packages**. The image contains only `src/`, `package.json` and production `node_modules` (see `.dockerignore`), never `.env` or `config.json`.
 
 ### Server setup
 
