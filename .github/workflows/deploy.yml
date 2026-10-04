@@ -1,0 +1,156 @@
+name: Build and Deploy
+
+# Runs only when started from the Actions tab (Actions → Build and Deploy → Run workflow) on main.
+# It deploys a release tag, never a branch: enter a tag such as v0.2.0, or leave the input empty
+# to deploy the highest SemVer tag. The tag is tested, built and published to GHCR as the image
+# version (v0.2.0 → 0.2.0), which WUD on the server picks up as an update.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to deploy (e.g. v0.2.0). Leave empty for the latest tag.
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/never-lucky-group/wowforeverdiscordserverbot
+
+jobs:
+  # Turns the input into a concrete tag, version and commit, and refuses anything that is not a
+  # SemVer tag on main's history, so only reviewed and merged code can be released.
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      short_sha: ${{ steps.resolve.outputs.short_sha }}
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow from main. It deploys a tag, picked with the tag input."
+          exit 1
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Resolve release tag
+        id: resolve
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          semver='^v?[0-9]+\.[0-9]+\.[0-9]+$'
+
+          tag="$(echo "$INPUT_TAG" | xargs)"
+          if [ -z "$tag" ]; then
+            tag="$(git tag --list | grep -E "$semver" | sort -V | tail -n1 || true)"
+            if [ -z "$tag" ]; then
+              echo "::error::No release tag found. Create one (e.g. v0.2.0) on main first."
+              exit 1
+            fi
+            echo "No tag given, using the latest: $tag"
+          fi
+
+          if ! echo "$tag" | grep -Eq "$semver"; then
+            echo "::error::'$tag' is not a release tag. Use MAJOR.MINOR.PATCH, optionally with a leading v."
+            exit 1
+          fi
+          if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::Tag '$tag' does not exist."
+            exit 1
+          fi
+
+          sha="$(git rev-list -n1 "refs/tags/$tag")"
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::Tag '$tag' ($sha) is not on main. Only merged commits can be deployed."
+            exit 1
+          fi
+
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "sha=$sha"
+            echo "short_sha=${sha:0:7}"
+          } >> "$GITHUB_OUTPUT"
+          echo "### Deploying \`$tag\` (\`${sha:0:7}\`)" >> "$GITHUB_STEP_SUMMARY"
+
+  # Same checks as the Test workflow, run against the tagged commit being released.
+  test:
+    needs: resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+
+  # Publishing is the production deploy: WUD offers every new version tag as an update. The
+  # production environment is where a required-reviewer approval gate and a main-only deployment
+  # branch rule belong (Settings → Environments → production); once added, this job waits there.
+  deploy:
+    needs: [resolve, test]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://github.com/Never-Lucky-Group/WoWForeverDiscordServerBot/pkgs/container/wowforeverdiscordserverbot
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The run's own ref is main, so the tags and revision label are set from the resolved tag
+      # rather than metadata-action's defaults, which would describe main's latest commit.
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=${{ needs.resolve.outputs.version }}
+            type=raw,value=sha-${{ needs.resolve.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.resolve.outputs.version }}
+            org.opencontainers.image.revision=${{ needs.resolve.outputs.sha }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

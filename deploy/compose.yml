@@ -7,7 +7,7 @@ name: wowforever-bot
 services:
   bot:
     # Pin an exact version from the GHCR package page. Change it to update or roll back.
-    image: ghcr.io/rboothian/wowforeverdiscordserverbot:0.1.1
+    image: ghcr.io/never-lucky-group/wowforeverdiscordserverbot:0.2.0
     container_name: wowforever-bot
     restart: unless-stopped
     # Small init process as PID 1: forwards signals and reaps zombie processes.
@@ -34,7 +34,7 @@ services:
       # WUD: only compare the SemVer version tags, not sha-* or main. `$$` is a literal `$`.
       - wud.tag.include=^\d+\.\d+\.\d+$$
       - wud.display.name=WoW Forever bot
-      - wud.link.template=https://github.com/RBoothian/WoWForeverDiscordServerBot/commits/main
+      - wud.link.template=https://github.com/Never-Lucky-Group/WoWForeverDiscordServerBot/commits/main
       # WUD: the Update button uses WUD's dockercompose trigger named "bot", which rewrites the
       # image tag in this file and recreates the container. See README → Deployment.
       - wud.trigger.include=dockercompose.bot
