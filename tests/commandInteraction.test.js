@@ -3,6 +3,7 @@ import {
   COMMAND_ERROR_MESSAGE,
   NO_PERMISSION_MESSAGE,
   PICKER_TIMEOUT_MESSAGE,
+  handleAutocomplete,
   handleChatInputCommand,
 } from '../src/handlers/commandInteraction.js';
 import {
@@ -251,5 +252,68 @@ describe('handleChatInputCommand', () => {
         );
       });
     });
+  });
+});
+
+describe('handleAutocomplete', () => {
+  function setupAutocomplete({ roles = [GUILD_A.officerRoleId], autocomplete, inGuild = true }) {
+    const command = { ...fakeCommand(), autocomplete };
+    const member = fakeMember(USER_ID, roles);
+    const guild = fakeGuild(GUILD_A, [member]);
+    const client = fakeClient({
+      botConfig: makeBotConfig(GUILD_A),
+      guilds: [guild],
+      commands: [command],
+    });
+    const interaction = {
+      commandName: 'test',
+      client,
+      user: { id: USER_ID },
+      guildId: inGuild ? guild.id : null,
+      guild: inGuild ? guild : null,
+      member: inGuild ? member : null,
+      responded: false,
+      inGuild: () => inGuild,
+      inCachedGuild: () => inGuild,
+      respond: vi.fn(() => Promise.resolve()),
+    };
+    return { command, guild, member, interaction };
+  }
+
+  it("passes Officers' requests to the command with the server context", async () => {
+    const autocomplete = vi.fn(() => Promise.resolve());
+    const { interaction, guild, member } = setupAutocomplete({ autocomplete });
+    await handleAutocomplete(interaction);
+    expect(autocomplete).toHaveBeenCalledWith(interaction, {
+      guild,
+      member,
+      guildConfig: GUILD_A,
+    });
+  });
+
+  it('suggests nothing to non-Officers', async () => {
+    const autocomplete = vi.fn();
+    const { interaction } = setupAutocomplete({ autocomplete, roles: [] });
+    await handleAutocomplete(interaction);
+    expect(autocomplete).not.toHaveBeenCalled();
+    expect(interaction.respond).toHaveBeenCalledWith([]);
+  });
+
+  it('suggests nothing outside servers or for commands without autocomplete', async () => {
+    const outside = setupAutocomplete({ autocomplete: vi.fn(), inGuild: false });
+    await handleAutocomplete(outside.interaction);
+    expect(outside.interaction.respond).toHaveBeenCalledWith([]);
+
+    const none = setupAutocomplete({ autocomplete: undefined });
+    await handleAutocomplete(none.interaction);
+    expect(none.interaction.respond).toHaveBeenCalledWith([]);
+  });
+
+  it('answers with an empty list when the command fails', async () => {
+    const { interaction } = setupAutocomplete({
+      autocomplete: vi.fn(() => Promise.reject(new Error('boom'))),
+    });
+    await handleAutocomplete(interaction);
+    expect(interaction.respond).toHaveBeenCalledWith([]);
   });
 });
