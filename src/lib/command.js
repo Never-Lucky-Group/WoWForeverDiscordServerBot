@@ -9,6 +9,8 @@ import {
 //   {
 //     data,      // a SlashCommandBuilder, usually from createOfficerCommand()
 //     execute,   // async (interaction, { guild, member, guildConfig }) => {}
+//     autocomplete,  // optional: async (interaction, { guild, member, guildConfig }) => {},
+//                    // for options with setAutocomplete(true); called for Officers only
 //   }
 //
 // The dispatcher has already checked the Officer role and resolved which allowlisted server the

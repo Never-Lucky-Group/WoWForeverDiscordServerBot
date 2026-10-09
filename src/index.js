@@ -4,6 +4,8 @@ import { logger } from './lib/logger.js';
 import { registerCommandsOnStartup } from './lib/registerCommands.js';
 import { loadCommands } from './loaders/commands.js';
 import { loadEvents } from './loaders/events.js';
+import { openLootDatabase } from './loot/database.js';
+import { LootStore } from './loot/store.js';
 
 async function main() {
   const env = loadEnv();
@@ -13,6 +15,7 @@ async function main() {
   // Attached to the client so event handlers can reach them via interaction.client, etc.
   client.botConfig = await loadBotConfig(env.configPath);
   client.commands = await loadCommands();
+  client.lootStore = openLootStore(env.lootDbPath);
   const eventCount = await loadEvents(client);
   logger.info(
     {
@@ -31,9 +34,27 @@ async function main() {
   void registerCommandsOnStartup(client.rest, env.clientId, client.commands);
 }
 
+// A loot database that cannot be opened (e.g. the data volume is missing) disables only the loot
+// commands, so the rest of the bot keeps running. Returns null in that case.
+function openLootStore(dbPath) {
+  try {
+    const store = new LootStore(openLootDatabase(dbPath));
+    logger.info({ dbPath }, 'Opened the loot database');
+    return store;
+  } catch (error) {
+    logger.error({ err: error, dbPath }, 'Could not open the loot database; loot commands are off');
+    return null;
+  }
+}
+
 function registerShutdownHandlers(client) {
   const shutdown = (signal) => {
     logger.info({ signal }, 'Shutting down');
+    try {
+      client.lootStore?.db.close();
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to close the loot database');
+    }
     void client.destroy().finally(() => process.exit(0));
   };
   process.once('SIGINT', shutdown);

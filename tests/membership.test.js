@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { findAllowlistedMemberships, findOfficerMemberships } from '../src/lib/membership.js';
+import {
+  findAllowlistedMemberships,
+  findOfficerMemberships,
+  hasLootRole,
+} from '../src/lib/membership.js';
 import {
   GUILD_A,
   GUILD_B,
@@ -60,5 +64,19 @@ describe('findOfficerMemberships', () => {
       guilds: [fakeGuild(GUILD_A, [fakeMember(USER_ID, [GUILD_B.officerRoleId])])],
     });
     expect(findOfficerMemberships(client, USER_ID)).toEqual([]);
+  });
+});
+
+describe('hasLootRole', () => {
+  const lootRoleId = '500000000000000001';
+
+  it('is true only for members holding the configured loot role', () => {
+    const config = { ...GUILD_A, lootRoleId };
+    expect(hasLootRole(fakeMember(USER_ID, [lootRoleId]), config)).toBe(true);
+    expect(hasLootRole(fakeMember(USER_ID, [GUILD_A.officerRoleId]), config)).toBe(false);
+  });
+
+  it('is false when the guild has no loot role', () => {
+    expect(hasLootRole(fakeMember(USER_ID, [GUILD_A.officerRoleId]), GUILD_A)).toBe(false);
   });
 });
