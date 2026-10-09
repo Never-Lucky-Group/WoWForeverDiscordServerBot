@@ -93,6 +93,10 @@ describe('parseGargulExport', () => {
     expect(parseGargulExport(JSON.stringify([entry]))[0].itemName).toBe('Arcanist Boots');
   });
 
+  it('ignores a byte order mark at the start of the file', () => {
+    expect(parseGargulExport(`\uFEFF${JSON.stringify(fixtureEntries())}`)).toHaveLength(10);
+  });
+
   it('reads the item ID from the link when itemID is missing', () => {
     const [entry] = fixtureEntries();
     delete entry.itemID;

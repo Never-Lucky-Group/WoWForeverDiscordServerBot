@@ -138,6 +138,13 @@ describe('/loot queries', () => {
     expect(sent.content).toContain('**Garrosh-WoWForever** · Molten Core (PL)');
   });
 
+  it('names the item even when the filters match nothing', async () => {
+    const { sent } = await run('item', { name: '17182', raid: 'Onyxia' });
+    expect(sent.content.split('\n')[0]).toBe(
+      '**Sulfuras, Hand of Ragnaros** was awarded **0 times** in **Onyxia**.',
+    );
+  });
+
   it('summarises a raid session including disenchanted items', async () => {
     const store = storeWithFixture();
     const [session] = store.getImport(LOOT_GUILD.id, 1)?.sessions ?? [];

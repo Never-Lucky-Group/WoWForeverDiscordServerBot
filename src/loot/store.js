@@ -246,6 +246,17 @@ export class LootStore {
       .map((row) => (row.realm ? `${row.character}-${row.realm}` : row.character));
   }
 
+  // The stored name of an item ID (given as a number or numeric text), or null.
+  itemName(guildId, itemId) {
+    const text = String(itemId).trim();
+    if (!/^\d+$/.test(text)) return null;
+    return (
+      this.db
+        .prepare('SELECT MAX(item_name) AS name FROM awards WHERE guild_id = ? AND item_id = ?')
+        .get(guildId, Number(text))?.name ?? null
+    );
+  }
+
   // [{ itemId, itemName }] whose name contains `text` (or whose ID starts with it).
   searchItems(guildId, text, limit = 25) {
     return this.db

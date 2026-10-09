@@ -52,7 +52,8 @@ const NOT_JSON_MESSAGE =
 export function parseGargulExport(text) {
   let raw;
   try {
-    raw = JSON.parse(text);
+    // Some editors start UTF-8 files with a byte order mark, which JSON.parse rejects.
+    raw = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch {
     throw new GargulExportError(NOT_JSON_MESSAGE);
   }

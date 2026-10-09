@@ -14,6 +14,8 @@ import { MAX_SESSIONS, planImport } from '../importPlan.js';
 
 // Gargul exports are plain text; a season of awards is well under 1 MB.
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
+// Gives up on a stalled download well before Discord's 15-minute interaction limit.
+export const DOWNLOAD_TIMEOUT_MS = 30_000;
 // How long the officer has to label the sessions and press Import.
 export const LABEL_TIMEOUT_MS = 5 * 60_000;
 const MESSAGE_LIMIT = 2000;
@@ -282,7 +284,7 @@ function withDiscrepancies(text, discrepancies) {
 }
 
 async function download(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!response.ok) {
     throw new Error(`Downloading the attachment failed with HTTP ${response.status}`);
   }

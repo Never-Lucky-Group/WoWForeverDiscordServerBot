@@ -208,6 +208,11 @@ describe('/loot import', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('downloads the file with a timeout', async () => {
+    await runImport(memoryStore());
+    expect(fetch).toHaveBeenCalledWith(ATTACHMENT.url, { signal: expect.any(AbortSignal) });
+  });
+
   it('needs a raid list in the config', async () => {
     const { interaction } = await runImport(memoryStore(), {
       guildConfig: { ...LOOT_GUILD, raids: undefined },

@@ -62,7 +62,8 @@ export async function itemQuery(interaction, { guild, guildConfig, store }) {
   const item = interaction.options.getString('name', true).trim();
   await withFilters(interaction, guildConfig, async ({ filters, description }) => {
     const awards = store.itemAwards(guild.id, item, filters);
-    const itemName = awards[0]?.itemName ?? item;
+    // Autocomplete passes the item ID; show the name even when the filters match nothing.
+    const itemName = awards[0]?.itemName ?? store.itemName(guild.id, item) ?? item;
     const times = `${awards.length} time${awards.length === 1 ? '' : 's'}`;
     await sendPaged(interaction, {
       header: `**${itemName}** was awarded **${times}**${description}.`,
