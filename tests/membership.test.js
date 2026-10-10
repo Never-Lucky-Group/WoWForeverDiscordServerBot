@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  findAllowlistedMemberships,
-  findOfficerMemberships,
-  hasLootRole,
-} from '../src/lib/membership.js';
+import { findAllowlistedMemberships, hasLootRole, isOfficer } from '../src/lib/membership.js';
 import {
   GUILD_A,
   GUILD_B,
@@ -50,20 +46,11 @@ describe('findAllowlistedMemberships', () => {
   });
 });
 
-describe('findOfficerMemberships', () => {
-  it("only returns guilds where the user has that guild's Officer role", () => {
-    const { client } = setup();
-    expect(findOfficerMemberships(client, USER_ID).map(({ guild }) => guild.id)).toEqual([
-      GUILD_A.id,
-    ]);
-  });
-
-  it("does not accept another guild's Officer role", () => {
-    const client = fakeClient({
-      botConfig: makeBotConfig(GUILD_A, GUILD_B),
-      guilds: [fakeGuild(GUILD_A, [fakeMember(USER_ID, [GUILD_B.officerRoleId])])],
-    });
-    expect(findOfficerMemberships(client, USER_ID)).toEqual([]);
+describe('isOfficer', () => {
+  it("is true only for members holding that guild's Officer role", () => {
+    expect(isOfficer(fakeMember(USER_ID, [GUILD_A.officerRoleId]), GUILD_A)).toBe(true);
+    expect(isOfficer(fakeMember(USER_ID, [GUILD_B.officerRoleId]), GUILD_A)).toBe(false);
+    expect(isOfficer(fakeMember(USER_ID), GUILD_A)).toBe(false);
   });
 });
 

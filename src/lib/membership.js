@@ -21,10 +21,3 @@ export function isOfficer(member, guildConfig) {
 export function hasLootRole(member, guildConfig) {
   return Boolean(guildConfig.lootRoleId) && member.roles.cache.has(guildConfig.lootRoleId);
 }
-
-// Allowlisted guilds where the user is a member and holds that guild's Officer role.
-export function findOfficerMemberships(client, userId) {
-  return findAllowlistedMemberships(client, userId).filter(({ member, guildConfig }) =>
-    isOfficer(member, guildConfig),
-  );
-}

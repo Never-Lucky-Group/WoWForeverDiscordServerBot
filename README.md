@@ -6,8 +6,9 @@ The bot is used mainly in a single server but supports several. It only operates
 
 ## Current behavior
 
-- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role** and work only in servers. The command runs for the server it is used in.
-  - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user is an Officer, and if they are an Officer in several, the bot asks which server to use.
+- **Slash commands** (`/ping` placeholder) are limited to members with the server's configured **Officer role** unless a command allows more members, and work only in servers. The command runs for the server it is used in.
+  - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user may use it, and if there are several, the bot asks which server to use.
+- **Help** (`/help`): any member lists the commands they can use with a short description. `/help command:<name>` describes a command or subcommand (for example `loot` or `loot character`) with its options and examples. Commands the member cannot use are not listed or suggested, and asking for one gets the same answer as a command that does not exist. Replies are visible only to the person who asked.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
 - **Loot tracking** (`/loot`): Officers who also hold the server's **loot role** import [Gargul](https://github.com/papa-smurf/Gargul) loot exports and ask who received what. See [Loot tracking](#loot-tracking).
@@ -298,7 +299,7 @@ src/
   commands/<category>/*.js  slash commands, loaded automatically
   events/*.js               event listeners, loaded automatically
   handlers/                 command dispatcher, DM handler, server allowlist, join role
-  lib/                      shared helpers (logger, membership checks, command builder, command registration)
+  lib/                      shared helpers (logger, membership checks, command builders, command registration, /help pages)
   loaders/                  dynamic loaders for commands/ and events/
   loot/                     Gargul loot tracking: export parser, database, queries and /loot handlers
 tests/                      Vitest tests
@@ -327,9 +328,11 @@ export default {
 };
 ```
 
-- The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
+- The dispatcher has already checked that the member may use the command and resolved which server it runs for before `execute` is called.
+- Only Officers may use a command by default. To change that, export `canUse(member, guildConfig)` returning whether the member may use it (`/loot` also requires the loot role, `/help` allows everyone). It replaces the Officer check, so a command that should stay Officer-only must call `isOfficer()` from `src/lib/membership.js` itself. Build a command that members other than Officers can use with `createMemberCommand` instead of `createOfficerCommand`, which hides the command from non-admins in Discord. `/help` lists only the commands a member may use.
+- `/help` builds each command's usage, options and subcommands from `data`. To add a longer description and examples, export `help` (the format is described in `src/lib/command.js`; see `src/commands/loot/loot.js` for subcommands). Without it, `/help` uses the command's short description.
 - Use `respond()` rather than `interaction.reply()`, because the first reply may already have been used (for example by a deferred reply, or by the DM server picker if DM commands are re-enabled).
-- For options with `setAutocomplete(true)`, also export `async autocomplete(interaction, { guild, member, guildConfig })` and answer with `interaction.respond(choices)`. The dispatcher only calls it for Officers.
+- For options with `setAutocomplete(true)`, also export `async autocomplete(interaction, { guild, member, guildConfig })` and answer with `interaction.respond(choices)`. The dispatcher only calls it for members who may use the command.
 - The bot registers it with Discord the next time it starts (`npm run dev` restarts on save). Reload Discord (Ctrl+R) if it does not appear.
 
 ### Adding an event listener

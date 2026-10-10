@@ -1,9 +1,15 @@
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { createOfficerCommand, isCommand } from '../src/lib/command.js';
+import {
+  canUseCommand,
+  createMemberCommand,
+  createOfficerCommand,
+  isCommand,
+} from '../src/lib/command.js';
 import { logger } from '../src/lib/logger.js';
 import { loadCommands } from '../src/loaders/commands.js';
 import { createListener, isBotEvent, loadEvents } from '../src/loaders/events.js';
+import { GUILD_A, USER_ID, fakeMember } from './helpers/fakes.js';
 
 const fixtures = path.join(import.meta.dirname, 'fixtures');
 
@@ -21,10 +27,35 @@ describe('isCommand', () => {
     ['missing data', { execute }],
     ['data without a name', { data: { toJSON: () => ({}) }, execute }],
     ['data without toJSON', { data: { name: 'valid' }, execute }],
+    ['a non-function canUse', { data, execute, canUse: true }],
     ['null', null],
     ['a string', 'command'],
   ])('rejects %s', (_label, value) => {
     expect(isCommand(value)).toBe(false);
+  });
+});
+
+describe('createMemberCommand', () => {
+  it('registers a server command without the default permission that hides it', () => {
+    const json = createMemberCommand('member', 'For everyone').toJSON();
+    expect(json).toMatchObject({ contexts: [0], integration_types: [0] });
+    expect(json.default_member_permissions).toBeUndefined();
+  });
+});
+
+describe('canUseCommand', () => {
+  const officer = fakeMember(USER_ID, [GUILD_A.officerRoleId]);
+  const plain = fakeMember(USER_ID);
+
+  it('allows only Officers when the command has no canUse', () => {
+    const command = { data: createOfficerCommand('valid', 'A valid command') };
+    expect(canUseCommand(command, officer, GUILD_A)).toBe(true);
+    expect(canUseCommand(command, plain, GUILD_A)).toBe(false);
+  });
+
+  it("follows the command's canUse when it has one", () => {
+    expect(canUseCommand({ canUse: () => true }, plain, GUILD_A)).toBe(true);
+    expect(canUseCommand({ canUse: () => false }, officer, GUILD_A)).toBe(false);
   });
 });
 
@@ -45,7 +76,7 @@ describe('isBotEvent', () => {
 describe('loadCommands', () => {
   it('loads the commands in src/commands', async () => {
     const commands = await loadCommands();
-    expect([...commands.keys()]).toContain('ping');
+    expect([...commands.keys()]).toEqual(expect.arrayContaining(['help', 'loot', 'ping']));
   });
 
   it('rejects a module that is not a valid command', async () => {

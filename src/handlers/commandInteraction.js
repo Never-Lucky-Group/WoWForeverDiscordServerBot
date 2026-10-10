@@ -5,8 +5,9 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
+import { canUseCommand } from '../lib/command.js';
 import { logger } from '../lib/logger.js';
-import { findOfficerMemberships, isOfficer } from '../lib/membership.js';
+import { findAllowlistedMemberships } from '../lib/membership.js';
 import { respond } from '../lib/respond.js';
 
 export const NO_PERMISSION_MESSAGE = "You don't have permission to use this command.";
@@ -16,8 +17,9 @@ export const PICKER_TIMEOUT_MESSAGE =
 export const PICKER_TIMEOUT_MS = 60_000;
 
 // Central slash command dispatcher: looks up the command, resolves which allowlisted server it
-// runs for (asking in DMs when the user is an Officer in several; DM commands are currently
-// disabled), enforces the Officer role, then runs it. Any error is logged and reported to the user.
+// runs for (asking in DMs when the user may use it in several; DM commands are currently
+// disabled), checks that the user may use it (the Officer role unless the command's canUse says
+// otherwise), then runs it. Any error is logged and reported to the user.
 export async function handleChatInputCommand(interaction) {
   const command = interaction.client.commands.get(interaction.commandName);
   if (!command) {
@@ -27,7 +29,7 @@ export async function handleChatInputCommand(interaction) {
   }
 
   try {
-    const context = await resolveCommandContext(interaction);
+    const context = await resolveCommandContext(interaction, command);
     if (!context) return;
     await command.execute(interaction, context);
   } catch (error) {
@@ -44,8 +46,8 @@ export async function handleChatInputCommand(interaction) {
 }
 
 // Answers an autocomplete request by calling the command's autocomplete(interaction, context).
-// Only Officers in an allowlisted server get suggestions; everyone else gets an empty list, so
-// stored data never leaks to other members.
+// Only members of an allowlisted server who may use the command get suggestions; everyone else
+// gets an empty list, so stored data never leaks to other members.
 export async function handleAutocomplete(interaction) {
   const command = interaction.client.commands.get(interaction.commandName);
   const guildConfig = interaction.inGuild()
@@ -57,7 +59,7 @@ export async function handleAutocomplete(interaction) {
       typeof command?.autocomplete !== 'function' ||
       !guildConfig ||
       !interaction.inCachedGuild() ||
-      !isOfficer(interaction.member, guildConfig)
+      !canUseCommand(command, interaction.member, guildConfig)
     ) {
       await interaction.respond([]);
       return;
@@ -84,13 +86,13 @@ export async function handleAutocomplete(interaction) {
 // Commands in DMs are disabled for now (see createOfficerCommand in lib/command.js), so Discord
 // does not send DM command interactions and the DM path below, including promptForGuild, is not
 // reached. It is kept so the feature can be re-enabled by changing only the command contexts.
-async function resolveCommandContext(interaction) {
+async function resolveCommandContext(interaction, command) {
   if (interaction.inGuild()) {
     const guildConfig = interaction.client.botConfig.guilds.get(interaction.guildId);
     if (
       !guildConfig ||
       !interaction.inCachedGuild() ||
-      !isOfficer(interaction.member, guildConfig)
+      !canUseCommand(command, interaction.member, guildConfig)
     ) {
       await deny(interaction);
       return null;
@@ -98,17 +100,24 @@ async function resolveCommandContext(interaction) {
     return { guild: interaction.guild, member: interaction.member, guildConfig };
   }
 
-  const memberships = findOfficerMemberships(interaction.client, interaction.user.id);
+  const memberships = findUsableMemberships(interaction, command);
   if (memberships.length === 0) {
     await deny(interaction);
     return null;
   }
   if (memberships.length === 1) return memberships[0];
-  return promptForGuild(interaction, memberships);
+  return promptForGuild(interaction, command, memberships);
+}
+
+// Allowlisted servers where the user is a member and may use the command.
+function findUsableMemberships(interaction, command) {
+  return findAllowlistedMemberships(interaction.client, interaction.user.id).filter(
+    ({ member, guildConfig }) => canUseCommand(command, member, guildConfig),
+  );
 }
 
 // Asks a DM user which server to run the command in. Not reached while DM commands are disabled.
-async function promptForGuild(interaction, memberships) {
+async function promptForGuild(interaction, command, memberships) {
   const customId = `guild-picker:${interaction.id}`;
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
@@ -140,7 +149,7 @@ async function promptForGuild(interaction, memberships) {
   }
 
   // Re-check against current state: roles or membership may have changed while the picker was open.
-  const chosen = findOfficerMemberships(interaction.client, interaction.user.id).find(
+  const chosen = findUsableMemberships(interaction, command).find(
     ({ guild }) => guild.id === selection.values[0],
   );
   if (!chosen) {
@@ -168,6 +177,6 @@ function logDenied(interaction) {
       userId: interaction.user.id,
       guildId: interaction.guildId,
     },
-    'Denied command: user is not an Officer',
+    'Denied command: user may not use it',
   );
 }

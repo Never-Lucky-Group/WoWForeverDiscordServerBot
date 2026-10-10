@@ -6,10 +6,11 @@ import loot, {
 import { NO_PERMISSION_MESSAGE } from '../src/handlers/commandInteraction.js';
 import { PAGE_SIZE, paginate } from '../src/loot/discord/pager.js';
 import { splitIntoSessions } from '../src/loot/sessions.js';
-import { GUILD_A } from './helpers/fakes.js';
+import { GUILD_A, USER_ID, fakeMember } from './helpers/fakes.js';
 import { fixtureAwards, memoryStore } from './helpers/loot.js';
 import {
   LOOT_GUILD,
+  LOOT_ROLE_ID,
   fakeComponent,
   fakeLootInteraction,
   fakeOptions,
@@ -65,6 +66,18 @@ describe('/loot definition', () => {
 });
 
 describe('/loot permissions', () => {
+  it('may be used by Officers with the loot role', () => {
+    const member = (roles) => fakeMember(USER_ID, roles);
+    expect(loot.canUse(member([GUILD_A.officerRoleId, LOOT_ROLE_ID]), LOOT_GUILD)).toBe(true);
+    expect(loot.canUse(member([GUILD_A.officerRoleId]), LOOT_GUILD)).toBe(false);
+    expect(loot.canUse(member([LOOT_ROLE_ID]), LOOT_GUILD)).toBe(false);
+  });
+
+  it('may be used by Officers in a server without a loot role, to say it is not set up', () => {
+    expect(loot.canUse(fakeMember(USER_ID, [GUILD_A.officerRoleId]), GUILD_A)).toBe(true);
+    expect(loot.canUse(fakeMember(USER_ID), GUILD_A)).toBe(false);
+  });
+
   it('needs the loot role as well as the Officer role', async () => {
     const { sent, interaction } = await run('leaderboard', {}, { roles: [GUILD_A.officerRoleId] });
     expect(sent.content).toBe(NO_PERMISSION_MESSAGE);
