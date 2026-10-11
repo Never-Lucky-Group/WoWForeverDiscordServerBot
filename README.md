@@ -10,6 +10,7 @@ The bot is used mainly in a single server but supports several. It only operates
   - Commands in DMs with the bot are disabled for now. Discord cannot apply server permissions in DMs, so it showed the commands to every user there. The code for them is kept (see `createOfficerCommand` in `src/lib/command.js`): with it re-enabled, a DM command runs for the allowlisted server where the user is an Officer, and if they are an Officer in several, the bot asks which server to use.
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
+- **Loot tracking** (`/loot`): Officers who also hold the server's **loot role** import [Gargul](https://github.com/papa-smurf/Gargul) loot exports and ask who received what. See [Loot tracking](#loot-tracking).
 
 ## Requirements
 
@@ -65,6 +66,7 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
 | `DISCORD_CLIENT_ID` | yes      | Application ID                                               |
 | `LOG_LEVEL`         | no       | `fatal`, `error`, `warn`, `info` (default), `debug`, `trace` |
 | `BOT_CONFIG_PATH`   | no       | Path to the allowlist config (default `config.json`)         |
+| `LOOT_DB_PATH`      | no       | Loot database file (default `data/loot.sqlite`)              |
 
 `config.json` is the server allowlist. It is gitignored because this repository is public. See `config.example.json`.
 
@@ -75,7 +77,10 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
       "name": "Production server",
       "id": "SERVER_ID",
       "officerRoleId": "ROLE_ID",
-      "joinRoleId": "ROLE_ID"
+      "joinRoleId": "ROLE_ID",
+      "lootRoleId": "ROLE_ID",
+      "raids": ["Molten Core", "Onyxia"],
+      "raidReset": { "weekday": "tuesday", "time": "15:00", "timeZone": "UTC" }
     }
   ]
 }
@@ -85,12 +90,55 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
 - Get IDs by enabling _Developer Mode_ in Discord (User Settings → Advanced), then right-clicking a server or role → _Copy ID_.
 - The bot refuses to start with an empty allowlist. With no servers listed, it would leave every server.
 - `joinRoleId` is optional. Leave it out and new members of that server get no role. It must not be the Officer role. To assign it, the bot needs the **Manage Roles** permission, and its own role must be above the join role in the server's role list. The bot checks both at startup and logs a warning if either is missing.
+- `lootRoleId` is optional. The `/loot` commands need this role **and** the Officer role. Leave it out and `/loot` is disabled in that server. It may be the Officer role itself, but not the join role.
+- `raids` is optional: up to 25 unique raid names (up to 100 characters each) offered when labelling an import. Importing needs at least one. Renaming a raid here does not rename it in loot already imported.
+- `raidReset` is optional: when the weekly raid lockout resets, as a lowercase `weekday`, a 24-hour `time` and an [IANA time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). It defaults to Tuesday 15:00 UTC. The `weeks` filter counts back from it, and `from`/`to` dates are read in its time zone.
 
 ### Test bots and production
 
 Each Discord application is a separate bot with its own token and its own list of slash commands. A test bot only receives events from the servers it has been added to, and registering its commands never changes the production bot's commands, so testing locally does not affect production.
 
 Keep the production token on the production server only. Two running copies of the bot with the same token both receive every event, so both would answer DMs and race each other on commands.
+
+## Loot tracking
+
+[Gargul](https://github.com/papa-smurf/Gargul) is the WoW addon the raid uses to roll for and award loot. The bot stores Gargul's award history so Officers can ask who received what. Data is stored per server in an SQLite database (Node's built-in `node:sqlite`) at `LOOT_DB_PATH`.
+
+### Exporting from Gargul
+
+1. In game, open Gargul's settings → **Exporting loot** and set the export format to **Detailed (JSON)**. The bot accepts only this format: it is the only one with item names (WoW Forever's items are not on Wowhead), exact award times and Gargul's unique ID for each award.
+2. Run `/gl export`, select the raid day(s) on the left, and copy all of the text in the box.
+3. Paste it into a text file, for example `gargul-2026-11-10.json`.
+
+### Importing
+
+`/loot import file:` uploads the file. The bot:
+
+1. Skips awards it already has (matched by Gargul's ID, so overlapping exports and exports from several officers are safe). If a stored award differs from the file, for example because its winner was changed in Gargul, the bot lists the difference and changes nothing. Fix it with `/loot imports replace` or `/loot imports delete`.
+2. Splits the new awards into **sessions**: a gap of 6 hours or more starts a new one, so a raid that runs past midnight stays one session. A file may contain at most 4 sessions with new awards.
+3. Shows a dropdown per session to choose its raid from `raids`. The raid whose earlier imports share the most items with the session is pre-selected.
+4. Stores everything when **Import** is pressed. Nothing is stored if the prompt is cancelled, times out after 5 minutes, or the bot restarts first.
+
+Gargul does not record which raid an award came from, which is why each session is labelled by hand.
+
+### Commands
+
+| Command                          | Description                                                                 |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `/loot import file`              | Import a Gargul JSON export                                                 |
+| `/loot imports list`             | List uploads with their sessions and award counts                           |
+| `/loot imports delete id`        | Delete an upload and all of its awards (asks for confirmation)              |
+| `/loot imports replace id file`  | Swap an upload's awards for a corrected export; the upload keeps its number |
+| `/loot character name [filters]` | Items a character received                                                  |
+| `/loot item name [filters]`      | Who received an item                                                        |
+| `/loot raid session`             | Everything awarded in one raid session, including disenchanted items        |
+| `/loot leaderboard [filters]`    | Characters ranked by items received                                         |
+
+- Filters: `weeks` (the last N raid weeks, where 1 means since the most recent reset), `raid`, `from`/`to` (YYYY-MM-DD, `to` inclusive; not together with `weeks`) and `type` (main spec, off spec, soft reserved, wishlisted, prioritized, bonus roll).
+- Character names, items, raids, sessions and upload numbers autocomplete. Character names match without regard to case, with or without `-Realm`.
+- Items given to the disenchanter are stored but never counted for a character.
+- Replies are visible only to the person who asked. Long results have **Previous**/**Next** buttons, and **Download CSV** sends the full result as a file. The buttons stop working after 10 minutes.
+- An award deleted in Gargul is not removed by later imports, because it is simply missing from the new file. Use `/loot imports replace` with a fresh export of that raid.
 
 ## Scripts
 
@@ -165,8 +213,11 @@ After the first publish, check the package's visibility under the Never-Lucky-Gr
 On the server, create a directory (for example `/opt/discord-bot`) containing:
 
 - `compose.yml`: a copy of [`deploy/compose.yml`](deploy/compose.yml), with `image:` set to the version to run
-- `.env`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` and optionally `LOG_LEVEL` (see `.env.example`). Leave `BOT_CONFIG_PATH` unset. Run `chmod 600 .env`.
+- `.env`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` and optionally `LOG_LEVEL` (see `.env.example`). Leave `BOT_CONFIG_PATH` and `LOOT_DB_PATH` unset. Run `chmod 600 .env`.
 - `config.json`: the server allowlist. The container runs as uid 1000, which must be able to read it.
+- `data/`: the loot database, mounted at `/app/data`. Create it with `mkdir data && sudo chown 1000:1000 data`. If the bot cannot write to it, it logs an error and runs with the `/loot` commands disabled.
+
+To back up the loot data, copy `data/loot.sqlite` together with any `loot.sqlite-wal` and `loot.sqlite-shm` files next to it, ideally while the bot is stopped (`docker compose stop bot`).
 
 Then, from that directory:
 
@@ -178,7 +229,7 @@ docker compose logs -f bot
 
 The bot registers its slash commands on startup (see [Slash command registration](#slash-command-registration)). To register them from the image without the running bot, use `docker compose run --rm bot node src/deploy-commands.js`.
 
-The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Anything a future feature needs to keep must go in a volume mounted at `/app/data` (add one to `compose.yml` when needed); scratch files go in `/tmp`.
+The container has no open ports and no access to the Docker socket, runs as a non-root user with all Linux capabilities dropped, and its filesystem is read-only. Data the bot keeps goes in the `./data` volume mounted at `/app/data`; scratch files go in `/tmp`.
 
 ### WUD setup
 
@@ -249,7 +300,9 @@ src/
   handlers/                 command dispatcher, DM handler, server allowlist, join role
   lib/                      shared helpers (logger, membership checks, command builder, command registration)
   loaders/                  dynamic loaders for commands/ and events/
+  loot/                     Gargul loot tracking: export parser, database, queries and /loot handlers
 tests/                      Vitest tests
+tests/fixtures/gargul/      generated sample Gargul JSON export
 ```
 
 Plain JavaScript with ES modules (`import`/`export`); there is no build step. Imports between source files include the `.js` extension.
@@ -276,6 +329,7 @@ export default {
 
 - The dispatcher has already checked the Officer role and resolved which server the command runs for before `execute` is called.
 - Use `respond()` rather than `interaction.reply()`, because the first reply may already have been used (for example by a deferred reply, or by the DM server picker if DM commands are re-enabled).
+- For options with `setAutocomplete(true)`, also export `async autocomplete(interaction, { guild, member, guildConfig })` and answer with `interaction.respond(choices)`. The dispatcher only calls it for Officers.
 - The bot registers it with Discord the next time it starts (`npm run dev` restarts on save). Reload Discord (Ctrl+R) if it does not appear.
 
 ### Adding an event listener

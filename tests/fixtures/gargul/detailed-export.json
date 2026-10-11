@@ -1,0 +1,259 @@
+[
+  {
+    "checksum": "a1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:16800::::::::60:::::::::|h[Arcanist Boots]|h|r",
+    "itemID": 16800,
+    "awardedTo": "Thrall-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794339720,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": false,
+    "SR": true,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Thrall-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794339700
+      }
+    ]
+  },
+  {
+    "checksum": "b1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:17063::::::::60:::::::::|h[Band of Accuria]|h|r",
+    "itemID": 17063,
+    "awardedTo": "Jaina-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794341700,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Jaina-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794341680
+      }
+    ]
+  },
+  {
+    "checksum": "c1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:16795::::::::60:::::::::|h[Arcanist Crown]|h|r",
+    "itemID": 16795,
+    "awardedTo": "Thrall-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794344580,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": true,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "OS",
+    "Rolls": [
+      {
+        "player": "Thrall-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "OS",
+        "min": 1,
+        "max": 100,
+        "time": 1794344560
+      }
+    ]
+  },
+  {
+    "checksum": "d1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cff1eff00|Hitem:18264::::::::60:::::::::|h[Plans: Elemental Sharpening Stone]|h|r",
+    "itemID": 18264,
+    "awardedTo": "||de||",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794346200,
+    "received": false,
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "Rolls": []
+  },
+  {
+    "checksum": "e1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:17182::::::::60:::::::::|h[Sulfuras, Hand of Ragnaros]|h|r",
+    "itemID": 17182,
+    "awardedTo": "Garrosh-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794350880,
+    "received": false,
+    "winnerClass": "WARRIOR",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": true,
+    "TMB": true,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Garrosh-WoWForever",
+        "class": "WARRIOR",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794350860
+      }
+    ]
+  },
+  {
+    "checksum": "f1b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:18814::::::::60:::::::::|h[Choker of the Fire Lord]|h|r",
+    "itemID": 18814,
+    "awardedTo": "Jaina-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794356400,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": false,
+    "SR": false,
+    "WL": true,
+    "PL": false,
+    "TMB": true,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Jaina-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794356380
+      }
+    ]
+  },
+  {
+    "checksum": "a2b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": true,
+    "itemLink": "|cffa335ee|Hitem:17076::::::::60:::::::::|h[Bonereaver's Edge]|h|r",
+    "itemID": 17076,
+    "awardedTo": "Garrosh-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794356700,
+    "received": false,
+    "winnerClass": "WARRIOR",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "Bonus Roll",
+    "Rolls": []
+  },
+  {
+    "checksum": "b2b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:18423::::::::60:::::::::|h[Head of Onyxia]|h|r",
+    "itemID": 18423,
+    "awardedTo": "Thrall-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794513900,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Thrall-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794513880
+      }
+    ]
+  },
+  {
+    "checksum": "c2b2c3d4e5f6a7b8c9d0",
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:17067::::::::60:::::::::|h[Ancient Cornerstone Grimoire]|h|r",
+    "itemID": 17067,
+    "awardedTo": "Jaina-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794513960,
+    "received": false,
+    "winnerClass": "MAGE",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Jaina-WoWForever",
+        "class": "MAGE",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794513940
+      }
+    ]
+  },
+  {
+    "isBonusLoot": false,
+    "itemLink": "|cffa335ee|Hitem:18205::::::::60:::::::::|h[Eskhandar's Collar]|h|r",
+    "itemID": 18205,
+    "awardedTo": "Sylvanas-WoWForever",
+    "awardedBy": "Lootmaster-WoWForever",
+    "timestamp": 1794514020,
+    "received": false,
+    "winnerClass": "HUNTER",
+    "OS": false,
+    "SR": false,
+    "WL": false,
+    "PL": false,
+    "TMB": false,
+    "winningRollType": "MS",
+    "Rolls": [
+      {
+        "player": "Sylvanas-WoWForever",
+        "class": "HUNTER",
+        "amount": 87,
+        "classification": "MS",
+        "min": 1,
+        "max": 100,
+        "time": 1794514000
+      }
+    ]
+  }
+]

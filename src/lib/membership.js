@@ -16,6 +16,12 @@ export function isOfficer(member, guildConfig) {
   return member.roles.cache.has(guildConfig.officerRoleId);
 }
 
+// The loot commands need this role in addition to the Officer role. False when the guild has no
+// loot role configured.
+export function hasLootRole(member, guildConfig) {
+  return Boolean(guildConfig.lootRoleId) && member.roles.cache.has(guildConfig.lootRoleId);
+}
+
 // Allowlisted guilds where the user is a member and holds that guild's Officer role.
 export function findOfficerMemberships(client, userId) {
   return findAllowlistedMemberships(client, userId).filter(({ member, guildConfig }) =>

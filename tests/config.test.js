@@ -14,13 +14,15 @@ describe('loadEnv', () => {
       clientId: '123456789012345678',
       logLevel: 'info',
       configPath: 'config.json',
+      lootDbPath: 'data/loot.sqlite',
     });
   });
 
   it('treats empty optional values as unset', () => {
-    const env = loadEnv({ ...validEnv, LOG_LEVEL: '', BOT_CONFIG_PATH: '' });
+    const env = loadEnv({ ...validEnv, LOG_LEVEL: '', BOT_CONFIG_PATH: '', LOOT_DB_PATH: '' });
     expect(env.logLevel).toBe('info');
     expect(env.configPath).toBe('config.json');
+    expect(env.lootDbPath).toBe('data/loot.sqlite');
   });
 
   it('accepts overrides', () => {
@@ -90,6 +92,43 @@ describe('parseBotConfig', () => {
     expect(() =>
       parseBotConfig({ guilds: [{ ...GUILD_A, joinRoleId: GUILD_A.officerRoleId }] }),
     ).toThrow(/must not be the Officer role/);
+  });
+
+  describe('loot settings', () => {
+    const lootRoleId = '500000000000000001';
+    const raidReset = { weekday: 'wednesday', time: '04:00', timeZone: 'Europe/London' };
+
+    it('accepts a loot role, raids and a raid reset', () => {
+      const guild = { ...GUILD_A, lootRoleId, raids: ['Molten Core', 'Onyxia'], raidReset };
+      expect(parseBotConfig({ guilds: [guild] }).guilds.get(GUILD_A.id)).toEqual(guild);
+    });
+
+    it('trims raid names', () => {
+      const config = parseBotConfig({ guilds: [{ ...GUILD_A, raids: ['  Molten Core '] }] });
+      expect(config.guilds.get(GUILD_A.id)?.raids).toEqual(['Molten Core']);
+    });
+
+    it.each([
+      ['the @everyone role as the loot role', { lootRoleId: GUILD_A.id }, /@everyone/],
+      [
+        'the join role as the loot role',
+        { lootRoleId, joinRoleId: lootRoleId },
+        /must not be the join role/,
+      ],
+      ['an empty raid list', { raids: [] }, ConfigError],
+      ['duplicate raids (any case)', { raids: ['Onyxia', 'onyxia'] }, /unique/],
+      [
+        'more than 25 raids',
+        { raids: Array.from({ length: 26 }, (_, i) => `Raid ${i}`) },
+        ConfigError,
+      ],
+      ['a raid name over 100 characters', { raids: ['x'.repeat(101)] }, ConfigError],
+      ['an unknown weekday', { raidReset: { ...raidReset, weekday: 'tues' } }, ConfigError],
+      ['a 12-hour time', { raidReset: { ...raidReset, time: '3:00 PM' } }, /24-hour/],
+      ['an unknown time zone', { raidReset: { ...raidReset, timeZone: 'Mars/Base' } }, /IANA/],
+    ])('rejects %s', (_label, extra, expected) => {
+      expect(() => parseBotConfig({ guilds: [{ ...GUILD_A, ...extra }] })).toThrow(expected);
+    });
   });
 
   it('rejects unknown keys so typos are caught', () => {

@@ -43,6 +43,41 @@ export async function handleChatInputCommand(interaction) {
   }
 }
 
+// Answers an autocomplete request by calling the command's autocomplete(interaction, context).
+// Only Officers in an allowlisted server get suggestions; everyone else gets an empty list, so
+// stored data never leaks to other members.
+export async function handleAutocomplete(interaction) {
+  const command = interaction.client.commands.get(interaction.commandName);
+  const guildConfig = interaction.inGuild()
+    ? interaction.client.botConfig.guilds.get(interaction.guildId)
+    : undefined;
+
+  try {
+    if (
+      typeof command?.autocomplete !== 'function' ||
+      !guildConfig ||
+      !interaction.inCachedGuild() ||
+      !isOfficer(interaction.member, guildConfig)
+    ) {
+      await interaction.respond([]);
+      return;
+    }
+    await command.autocomplete(interaction, {
+      guild: interaction.guild,
+      member: interaction.member,
+      guildConfig,
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, commandName: interaction.commandName, userId: interaction.user.id },
+      'Autocomplete failed',
+    );
+    if (!interaction.responded) {
+      await interaction.respond([]).catch(() => {});
+    }
+  }
+}
+
 // Returns { guild, member, guildConfig } to run the command in, or null if the user was denied
 // or cancelled.
 //
