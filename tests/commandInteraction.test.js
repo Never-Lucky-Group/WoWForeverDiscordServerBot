@@ -18,10 +18,11 @@ import {
 
 const PICKER_CUSTOM_ID = 'guild-picker:400000000000000001';
 
-function fakeCommand() {
+function fakeCommand({ canUse } = {}) {
   return {
     data: { name: 'test', toJSON: () => ({ name: 'test', description: 'Test command' }) },
     execute: vi.fn(() => Promise.resolve()),
+    canUse,
   };
 }
 
@@ -84,8 +85,8 @@ describe('handleChatInputCommand', () => {
   });
 
   describe('in a server', () => {
-    function setupGuild({ roles, allowlisted = true, cached = true }) {
-      const command = fakeCommand();
+    function setupGuild({ roles, allowlisted = true, cached = true, canUse }) {
+      const command = fakeCommand({ canUse });
       const member = fakeMember(USER_ID, roles);
       const guild = fakeGuild(GUILD_A, [member]);
       const client = fakeClient({
@@ -121,6 +122,40 @@ describe('handleChatInputCommand', () => {
       expect(interaction.reply).toHaveBeenCalledWith(
         expect.objectContaining({ content: NO_PERMISSION_MESSAGE }),
       );
+    });
+
+    it("runs a command for anyone its canUse allows, passing the member and server's config", async () => {
+      const canUse = vi.fn(() => true);
+      const { command, guild, member, interaction } = setupGuild({ roles: [], canUse });
+      await handleChatInputCommand(interaction);
+      expect(canUse).toHaveBeenCalledWith(member, GUILD_A);
+      expect(command.execute).toHaveBeenCalledWith(interaction, {
+        guild,
+        member,
+        guildConfig: GUILD_A,
+      });
+    });
+
+    it('denies an Officer when the command’s canUse refuses', async () => {
+      const { command, interaction } = setupGuild({
+        roles: [GUILD_A.officerRoleId],
+        canUse: () => false,
+      });
+      await handleChatInputCommand(interaction);
+      expect(command.execute).not.toHaveBeenCalled();
+      expect(interaction.reply).toHaveBeenCalledWith(
+        expect.objectContaining({ content: NO_PERMISSION_MESSAGE }),
+      );
+    });
+
+    it('still requires an allowlisted server for commands anyone can use', async () => {
+      const { command, interaction } = setupGuild({
+        roles: [],
+        allowlisted: false,
+        canUse: () => true,
+      });
+      await handleChatInputCommand(interaction);
+      expect(command.execute).not.toHaveBeenCalled();
     });
 
     it('reports an error thrown by the command', async () => {
@@ -159,6 +194,18 @@ describe('handleChatInputCommand', () => {
       expect(interaction.reply).toHaveBeenCalledWith(
         expect.objectContaining({ content: NO_PERMISSION_MESSAGE }),
       );
+    });
+
+    it("only offers servers where the command's canUse allows the user", async () => {
+      const { command, interaction, guildA, memberA, pickerMessage } = setupDm([], []);
+      command.canUse = (_member, guildConfig) => guildConfig.id === GUILD_A.id;
+      await handleChatInputCommand(interaction);
+      expect(pickerMessage.awaitMessageComponent).not.toHaveBeenCalled();
+      expect(command.execute).toHaveBeenCalledWith(interaction, {
+        guild: guildA,
+        member: memberA,
+        guildConfig: GUILD_A,
+      });
     });
 
     it('runs directly when the user is an Officer in exactly one server', async () => {
@@ -256,8 +303,13 @@ describe('handleChatInputCommand', () => {
 });
 
 describe('handleAutocomplete', () => {
-  function setupAutocomplete({ roles = [GUILD_A.officerRoleId], autocomplete, inGuild = true }) {
-    const command = { ...fakeCommand(), autocomplete };
+  function setupAutocomplete({
+    roles = [GUILD_A.officerRoleId],
+    autocomplete,
+    inGuild = true,
+    canUse,
+  }) {
+    const command = { ...fakeCommand({ canUse }), autocomplete };
     const member = fakeMember(USER_ID, roles);
     const guild = fakeGuild(GUILD_A, [member]);
     const client = fakeClient({
@@ -297,6 +349,21 @@ describe('handleAutocomplete', () => {
     await handleAutocomplete(interaction);
     expect(autocomplete).not.toHaveBeenCalled();
     expect(interaction.respond).toHaveBeenCalledWith([]);
+  });
+
+  it('follows the command’s canUse', async () => {
+    const allowed = setupAutocomplete({
+      autocomplete: vi.fn(() => Promise.resolve()),
+      roles: [],
+      canUse: () => true,
+    });
+    await handleAutocomplete(allowed.interaction);
+    expect(allowed.command.autocomplete).toHaveBeenCalled();
+
+    const refused = setupAutocomplete({ autocomplete: vi.fn(), canUse: () => false });
+    await handleAutocomplete(refused.interaction);
+    expect(refused.command.autocomplete).not.toHaveBeenCalled();
+    expect(refused.interaction.respond).toHaveBeenCalledWith([]);
   });
 
   it('suggests nothing outside servers or for commands without autocomplete', async () => {
