@@ -22,13 +22,21 @@ export function weeklyOccurrences(weekly, timeZone, fromSeconds, toSeconds) {
 }
 
 // Occurrences of a configured weekly event that are due to be posted at `now`: those that have
-// not started yet and start within `postDaysAhead` days. Returns [{ date, startTime }].
+// not started yet and whose posting time has come. Returns [{ date, startTime }].
 export function duePosts(eventConfig, timeZone, now) {
-  if (!eventConfig.weekly) return [];
-  const window = eventConfig.weekly.postDaysAhead * DAY_SECONDS;
-  return weeklyOccurrences(eventConfig.weekly, timeZone, now + 1, now + window).map(
-    (startTime) => ({ date: localDate(startTime, timeZone), startTime }),
-  );
+  const { weekly } = eventConfig;
+  if (!weekly) return [];
+  // A sheet is posted at most a week ahead; the extra day covers a daylight saving change.
+  return weeklyOccurrences(weekly, timeZone, now + 1, now + 8 * DAY_SECONDS)
+    .map((startTime) => ({ date: localDate(startTime, timeZone), startTime }))
+    .filter(({ date }) => postTime(weekly, date, timeZone) <= now);
+}
+
+// When the sheet for the weekly event on `date` is posted: postAfterHours after the raid's start
+// time a week earlier, on the clock of the raid time zone.
+export function postTime(weekly, date, timeZone) {
+  const previousStart = localTimeToSeconds(addDaysToDate(date, -7), weekly.time, timeZone);
+  return previousStart + weekly.postAfterHours * HOUR_SECONDS;
 }
 
 // The times at which an event's leader gets a missing sign-ups report, earliest first:

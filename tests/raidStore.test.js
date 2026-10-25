@@ -1,7 +1,37 @@
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { RETENTION_SECONDS } from '../src/raids/store.js';
+import { openSqliteDatabase } from '../src/lib/sqlite.js';
+import { MIGRATIONS, openRaidsDatabase } from '../src/raids/database.js';
+import { RETENTION_SECONDS, RaidStore } from '../src/raids/store.js';
 import { GUILD_A, GUILD_B, USER_ID } from './helpers/fakes.js';
 import { memoryRaidStore, raidEvent, seconds } from './helpers/raids.js';
+
+describe('openRaidsDatabase', () => {
+  it('turns days ahead into hours after the previous raid', async () => {
+    const file = path.join(await mkdtemp(path.join(tmpdir(), 'raids-db-')), 'raids.sqlite');
+    // A database from before the change: weekly sheets posted a number of days ahead.
+    const old = openSqliteDatabase(file, MIGRATIONS.slice(0, 2), 'raids');
+    const insert = old.prepare(
+      `INSERT INTO raid_events (guild_id, name, channel_id, template_id, leader_id, weekday,
+         time, post_days_ahead, created_by, created_at, updated_by, updated_at)
+       VALUES (?, ?, '1', 'wowforever', '2', ?, ?, ?, '3', 0, '3', 0)`,
+    );
+    insert.run(GUILD_A.id, 'Seven', 'tuesday', '19:30', 7);
+    insert.run(GUILD_A.id, 'Two', 'tuesday', '19:30', 2);
+    insert.run(GUILD_A.id, 'Ten', 'tuesday', '19:30', 10);
+    insert.run(GUILD_A.id, 'Manual', null, null, null);
+    old.close();
+
+    const store = new RaidStore(openRaidsDatabase(file));
+    const weekly = Object.fromEntries(
+      store.raidEvents(GUILD_A.id).map((event) => [event.name, event.weekly?.postAfterHours]),
+    );
+    expect(weekly).toEqual({ Manual: undefined, Seven: 0, Ten: 0, Two: 120 });
+    store.db.close();
+  });
+});
 
 const OTHER_USER = '300000000000000002';
 const NOW = seconds('2026-10-24T12:00:00Z');
@@ -188,7 +218,7 @@ describe('RaidStore raid setup', () => {
     const id = store.addRaidEvent(GUILD_A.id, event, USER_ID, NOW);
     expect(store.raidEvents(GUILD_A.id)).toEqual([{ id, ...event }]);
 
-    const weekly = { weekday: 'wednesday', time: '19:30', postDaysAhead: 7 };
+    const weekly = { weekday: 'wednesday', time: '19:30', postAfterHours: 0 };
     store.updateRaidEvent(
       GUILD_A.id,
       { id, ...event, title: 'MC', raiderRoleId: '700000000000000001', weekly },

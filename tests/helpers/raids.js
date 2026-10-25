@@ -1,4 +1,4 @@
-import { Collection } from 'discord.js';
+import { Collection, ComponentType } from 'discord.js';
 import { vi } from 'vitest';
 import { openRaidsDatabase } from '../../src/raids/database.js';
 import { loadSetup } from '../../src/raids/setup.js';
@@ -20,7 +20,7 @@ export const MOLTEN_CORE = {
   channelId: RAID_CHANNEL_ID,
   templateId: 'wowclassic',
   leaderId: LEADER_ID,
-  weekly: { weekday: 'wednesday', time: '19:30', postDaysAhead: 7 },
+  weekly: { weekday: 'wednesday', time: '19:30', postAfterHours: 0 },
 };
 export const ONYXIA = {
   name: 'Onyxia',
@@ -218,6 +218,33 @@ export function modalValues(modal) {
   return Object.fromEntries(
     modal.toJSON().components.map(({ component }) => [component.custom_id, component.value ?? '']),
   );
+}
+
+// A submitted modal's `fields`: what the modal was filled in with (text, chosen options and
+// default users, roles or channels), changed by `changes`. A change is the text for a text
+// input, or an array of values or IDs for a select menu; [] chooses nothing. The users in `bots`
+// are bots.
+export function modalFields(modal, changes = {}, { bots = [] } = {}) {
+  const values = {};
+  for (const { component } of modal.toJSON().components) {
+    const id = component.custom_id;
+    if (changes[id] !== undefined) values[id] = changes[id];
+    else if (component.type === ComponentType.TextInput) values[id] = component.value ?? '';
+    else if (component.type === ComponentType.StringSelect) {
+      values[id] = component.options
+        .filter((option) => option.default)
+        .map((option) => option.value);
+    } else values[id] = (component.default_values ?? []).map((value) => value.id);
+  }
+  const selected = (id, make) =>
+    values[id].length ? new Collection(values[id].map((value) => [value, make(value)])) : null;
+  return {
+    getTextInputValue: (id) => values[id],
+    getStringSelectValues: (id) => values[id],
+    getSelectedChannels: (id) => selected(id, (value) => ({ id: value })),
+    getSelectedRoles: (id) => selected(id, (value) => ({ id: value })),
+    getSelectedUsers: (id) => selected(id, (value) => ({ id: value, bot: bots.includes(value) })),
+  };
 }
 
 // A /raid or /absence interaction from `member` in `guild`, with client.raids set up.

@@ -95,10 +95,11 @@ describe('setupProblems', () => {
   });
 
   it('rejects reminder hours at or before a weekly event is posted', () => {
-    const weekly = { ...MOLTEN_CORE.weekly, postDaysAhead: 2 };
+    const weekly = { ...MOLTEN_CORE.weekly, postAfterHours: 120 };
     expect(problems([{ ...MOLTEN_CORE, weekly }])).toEqual([
-      '"Molten Core" is posted 2 days (48 hours) ahead, so the 48-hour reminder would never be ' +
-        'sent for it. Lower the reminder hours or post it earlier.',
+      '"Molten Core" is posted 5 days after the previous raid starts, 48 hours before it starts, ' +
+        'so the 48-hour reminder would never be sent for it. Lower the reminder hours or post ' +
+        'it earlier.',
     ]);
     expect(
       problems([{ ...MOLTEN_CORE, weekly }], { ...RAID_SETTINGS, reminderHours: [47] }),

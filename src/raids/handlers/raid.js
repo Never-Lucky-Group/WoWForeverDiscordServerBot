@@ -15,6 +15,7 @@ import { formatDate, parseDateInput, parseTimeInput, todayIn } from '../dates.js
 import { raidersOf, sortRaiders } from '../missing.js';
 import { expandLineBreaks, postConfiguredEvent } from '../posting.js';
 import { reportEmbed } from '../report.js';
+import { fillTitle } from '../titles.js';
 import { eventUrl, isConfiguredEvent, rosterRoleId } from '../schedule.js';
 
 export const DATE_HELP = 'Use a date such as 2026-11-04, Nov 4 or 11/4.';
@@ -28,7 +29,7 @@ const FORM_TITLE_LIMIT = 45;
 const TIME_HELP = 'Use a 24-hour time such as 19:30.';
 
 export const NO_EVENTS_MESSAGE =
-  'No raid events are set up yet. An Officer can add one with `/raidsetup event add`.';
+  'No raid events are set up yet. An Officer can add one with `/raidsetup panel`.';
 
 // /raid create: checks the raid and date, then opens a form with the time, title and description,
 // filled in from the options or the event's setup, and posts the event through Raid-Helper on
@@ -76,8 +77,10 @@ export async function createRaid(interaction, context) {
     createForm(formId, {
       heading: `${eventConfig.name} · ${formatDate(date)}`,
       time: timeOption?.trim() ?? eventConfig.weekly?.time,
-      title:
+      title: fillTitle(
         interaction.options.getString('title')?.trim() || eventConfig.title || eventConfig.name,
+        date,
+      ),
       description: expandLineBreaks(
         interaction.options.getString('description')?.trim() || eventConfig.description || '',
       ),

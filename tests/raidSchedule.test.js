@@ -4,6 +4,7 @@ import {
   duePosts,
   eventUrl,
   isConfiguredEvent,
+  postTime,
   reminderPoints,
   rosterRoleId,
   rosterRoleIds,
@@ -27,7 +28,7 @@ const HOUR = 60 * 60;
 const SETUP = { raiderRoleId: RAIDER_ROLE_ID, events: [MOLTEN_CORE, ONYXIA], watched: [] };
 
 describe('weeklyOccurrences', () => {
-  const weekly = { weekday: 'wednesday', time: '19:30', postDaysAhead: 7 };
+  const weekly = { weekday: 'wednesday', time: '19:30', postAfterHours: 0 };
 
   it('lists the weekly start times in the window', () => {
     expect(
@@ -71,7 +72,7 @@ describe('weeklyOccurrences', () => {
 });
 
 describe('duePosts', () => {
-  it('returns the occurrences within postDaysAhead days that have not started', () => {
+  it('posts a sheet when the previous raid starts, by default', () => {
     // Wednesday 2026-10-28 19:30; the next is 2026-11-04 19:30, exactly 7 days later.
     const now = seconds('2026-10-28T19:30:00Z');
     expect(duePosts(MOLTEN_CORE, 'UTC', now)).toEqual([
@@ -79,10 +80,32 @@ describe('duePosts', () => {
     ]);
   });
 
-  it('leaves out occurrences more than postDaysAhead days away', () => {
+  it('leaves out an occurrence whose previous raid has not started yet', () => {
     // The 2026-11-04 occurrence is 7 days and 1 minute away.
     expect(duePosts(MOLTEN_CORE, 'UTC', seconds('2026-10-28T19:29:00Z'))).toEqual([
       { date: '2026-10-28', startTime: seconds('2026-10-28T19:30:00Z') },
+    ]);
+  });
+
+  it('posts a sheet the chosen hours after the previous raid starts', () => {
+    const late = { ...MOLTEN_CORE, weekly: { ...MOLTEN_CORE.weekly, postAfterHours: 3 } };
+    // The previous raid started at 19:30 on Wednesday 2026-10-28.
+    expect(duePosts(late, 'UTC', seconds('2026-10-28T22:29:00Z'))).toEqual([]);
+    expect(duePosts(late, 'UTC', seconds('2026-10-28T22:30:00Z'))).toEqual([
+      { date: '2026-11-04', startTime: seconds('2026-11-04T19:30:00Z') },
+    ]);
+  });
+
+  it('counts the hours from the previous raid on the local clock across daylight saving', () => {
+    // Los Angeles leaves daylight saving on Sunday 2026-11-01. The previous raid starts at
+    // 19:30 PDT on 2026-10-28 (02:30 UTC the next day), so the sheet is due 3 hours later, at
+    // 05:30 UTC: 166 hours before the 2026-11-04 raid at 19:30 PST, not 165.
+    const late = { ...MOLTEN_CORE, weekly: { ...MOLTEN_CORE.weekly, postAfterHours: 3 } };
+    const timeZone = 'America/Los_Angeles';
+    expect(postTime(late.weekly, '2026-11-04', timeZone)).toBe(seconds('2026-10-29T05:30:00Z'));
+    expect(duePosts(late, timeZone, seconds('2026-10-29T05:29:00Z'))).toEqual([]);
+    expect(duePosts(late, timeZone, seconds('2026-10-29T05:30:00Z'))).toEqual([
+      { date: '2026-11-04', startTime: seconds('2026-11-05T03:30:00Z') },
     ]);
   });
 

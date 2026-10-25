@@ -1,4 +1,5 @@
 import { localDate } from '../lib/time.js';
+import { fillTitle } from './titles.js';
 
 // Posts in progress, by `${guildId}:${raid event ID}:${date}`, so the weekly schedule and /raid
 // create (or two Officers) cannot post the same event at once.
@@ -6,9 +7,9 @@ const inFlight = new Map();
 
 // Posts a raid event on a date through Raid-Helper, unless an event for it already exists.
 // An existing event is one in the same channel on the same local date with the same title (any
-// case); this catches posts whose response was lost (e.g. a timeout after Raid-Helper created the
-// event) and events posted with the same title by hand. The result is recorded so the weekly
-// schedule does not post it again.
+// case), or for the weekly schedule the event's name; this catches posts whose response was lost (e.g. a timeout after
+// Raid-Helper created the event) and events posted by hand. The result is recorded so the weekly
+// schedule does not post it again. Placeholders such as {date} in the title are filled in.
 //   existingEvents        the guild's known upcoming events, from listEvents()
 //   postedBy              the Discord user ID for /raid create, or null for the weekly schedule
 //   title, description    optional, from /raid create: replace the config ones for this post
@@ -51,13 +52,16 @@ async function postOnce({
   now,
 }) {
   const date = localDate(startTime, timeZone);
-  const title = customTitle ?? eventConfig.title ?? eventConfig.name;
+  const title = fillTitle(customTitle ?? eventConfig.title ?? eventConfig.name, date);
   const description = customDescription ?? eventConfig.description;
+  // A weekly post also counts a sheet posted by hand with the event's plain name, since its own
+  // title may hold the date. /raid create gives its title, which may be a second run that day.
+  const titles = new Set([title, ...(customTitle ? [] : [eventConfig.name])].map(lower));
   const existing = existingEvents.find(
     (event) =>
       event.channelId === eventConfig.channelId &&
       localDate(event.startTime, timeZone) === date &&
-      event.title.toLowerCase() === title.toLowerCase(),
+      titles.has(event.title.toLowerCase()),
   );
 
   const event =
@@ -83,6 +87,10 @@ async function postOnce({
     now,
   );
   return { event, created: !existing };
+}
+
+function lower(text) {
+  return text.toLowerCase();
 }
 
 // Slash command text cannot hold line breaks, so a typed \n stands for one.

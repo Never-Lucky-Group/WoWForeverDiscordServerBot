@@ -8,18 +8,18 @@ const ABSENCE_COLUMNS = `
 const RAID_EVENT_COLUMNS = `
   id, name, channel_id AS channelId, template_id AS templateId, leader_id AS leaderId,
   raider_role_id AS raiderRoleId, title, description, weekday, time,
-  post_days_ahead AS postDaysAhead`;
+  post_after_hours AS postAfterHours`;
 
 // Rows about events that ended this long ago are deleted by cleanup().
 export const RETENTION_SECONDS = 30 * 24 * 60 * 60;
 
 // NULL columns become missing fields, as the rest of the bot expects of optional ones.
-function raidEventFromRow({ weekday, time, postDaysAhead, ...row }) {
+function raidEventFromRow({ weekday, time, postAfterHours, ...row }) {
   const event = {};
   for (const [key, value] of Object.entries(row)) {
     if (value !== null) event[key] = value;
   }
-  if (weekday) event.weekly = { weekday, time, postDaysAhead };
+  if (weekday) event.weekly = { weekday, time, postAfterHours };
   return event;
 }
 
@@ -35,7 +35,7 @@ function raidEventValues(event) {
     event.description ?? null,
     event.weekly?.weekday ?? null,
     event.weekly?.time ?? null,
-    event.weekly?.postDaysAhead ?? null,
+    event.weekly?.postAfterHours ?? null,
   ];
 }
 
@@ -138,7 +138,7 @@ export class RaidStore {
 
   // The server's raid events, by name:
   //   { id, name, channelId, templateId, leaderId, raiderRoleId?, title?, description?, weekly? }
-  // weekly is { weekday, time, postDaysAhead } when the event is posted every week.
+  // weekly is { weekday, time, postAfterHours } when the event is posted every week.
   raidEvents(guildId) {
     return this.db
       .prepare(
@@ -154,7 +154,7 @@ export class RaidStore {
     const { id } = this.db
       .prepare(
         `INSERT INTO raid_events (guild_id, name, channel_id, template_id, leader_id,
-           raider_role_id, title, description, weekday, time, post_days_ahead, created_by,
+           raider_role_id, title, description, weekday, time, post_after_hours, created_by,
            created_at, updated_by, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       )
@@ -168,7 +168,7 @@ export class RaidStore {
       .prepare(
         `UPDATE raid_events SET name = ?, channel_id = ?, template_id = ?, leader_id = ?,
            raider_role_id = ?, title = ?, description = ?, weekday = ?, time = ?,
-           post_days_ahead = ?, updated_by = ?, updated_at = ?
+           post_after_hours = ?, updated_by = ?, updated_at = ?
          WHERE guild_id = ? AND id = ?`,
       )
       .run(...raidEventValues(event), updatedBy, now, guildId, event.id);

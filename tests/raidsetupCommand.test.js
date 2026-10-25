@@ -65,12 +65,13 @@ async function run(subcommand, values = {}, { store = raidStore(), ...rest } = {
 }
 
 describe('/raidsetup definition and permissions', () => {
-  it('registers as an Officer command with event and settings groups', () => {
+  it('registers as an Officer command with a panel and event and settings groups', () => {
     const json = raidsetup.data.toJSON();
     expect(json).toMatchObject({ name: 'raidsetup', default_member_permissions: '0' });
     expect(
-      json.options.map((group) => [group.name, group.options.map((option) => option.name)]),
+      json.options.map((group) => [group.name, (group.options ?? []).map((option) => option.name)]),
     ).toEqual([
+      ['panel', []],
       ['event', ['add', 'edit', 'remove', 'list']],
       ['settings', ['show', 'set']],
     ]);
@@ -121,7 +122,7 @@ describe('/raidsetup event add', () => {
     expect(shared.sent.content).not.toContain('Integrations');
   });
 
-  it('adds a weekly time, posted 7 days ahead by default', async () => {
+  it('adds a weekly time, posted when the previous raid starts by default', async () => {
     const { store, sent } = await run('event add', {
       ...NEW_EVENT,
       weekday: 'friday',
@@ -130,15 +131,18 @@ describe('/raidsetup event add', () => {
     expect(storedEvent(store, 'Barrow Deeps').weekly).toEqual({
       weekday: 'friday',
       time: '20:00',
-      postDaysAhead: 7,
+      postAfterHours: 0,
     });
-    expect(sent.content).toContain('Weekly: Friday at 20:00 (UTC), posted 7 days ahead');
+    expect(sent.content).toContain(
+      'Weekly: Friday at 20:00 (UTC), posted when the previous raid starts',
+    );
   });
 
   it.each([
     [{ weekday: 'friday' }, 'needs both `weekday` and `time`'],
     [{ time: '20:00' }, 'needs both `weekday` and `time`'],
     [{ weekday: 'friday', time: '8pm' }, 'is not a time'],
+    [{ title: 'Barrow {week}' }, 'The title has {week}, which the bot does not know'],
     [{ leader: { id: '799999999999999999', bot: true } }, 'must be a person, not a bot'],
     [{ name: 'molten core' }, 'There is already an event named "Molten Core"'],
     [
@@ -167,7 +171,7 @@ describe('/raidsetup event add', () => {
       ...NEW_EVENT,
       weekday: 'friday',
       time: '20:00',
-      'days-ahead': 1,
+      'post-after': 144,
     });
     expect(sent.content).toContain('so the 48, 24-hour reminders would never be sent');
   });
@@ -198,6 +202,24 @@ describe('/raidsetup event edit', () => {
       ...MOLTEN_CORE.weekly,
       weekday: 'thursday',
     });
+    const { sent } = await run('event edit', { event: 'Molten Core', 'post-after': 3 }, { store });
+    expect(storedEvent(store, 'Molten Core').weekly).toEqual({
+      ...MOLTEN_CORE.weekly,
+      weekday: 'thursday',
+      postAfterHours: 3,
+    });
+    expect(sent.content).toContain('posted 3 hours after the previous raid starts');
+  });
+
+  it('offers when to post as choices, from when the previous raid starts to 6 days after', () => {
+    const add = raidsetup.data
+      .toJSON()
+      .options.find((group) => group.name === 'event')
+      .options.find((subcommand) => subcommand.name === 'add');
+    const choices = add.options.find((option) => option.name === 'post-after').choices;
+    expect(choices.at(0)).toEqual({ name: 'When the previous raid starts', value: 0 });
+    expect(choices.at(3)).toEqual({ name: '3 hours after the previous raid starts', value: 3 });
+    expect(choices.at(-1)).toEqual({ name: '6 days after the previous raid starts', value: 144 });
   });
 
   it('clears an optional field', async () => {

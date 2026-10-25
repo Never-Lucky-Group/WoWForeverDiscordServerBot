@@ -176,6 +176,17 @@ describe('/raid create', () => {
     expect(modalValues(modal)).toEqual({ time: '19:30', title: 'Molten Core', description: '' });
   });
 
+  it("fills the raid's date into the form's title", async () => {
+    const store = raidStore({ events: [{ ...MOLTEN_CORE, title: 'MC {day} {date}' }] });
+    const { interaction, api } = await run(
+      'create',
+      { raid: 'Molten Core', date: 'Nov 4' },
+      { store, form: { title: 'MC {date} alts' } },
+    );
+    expect(modalValues(interaction.showModal.mock.calls[0][0]).title).toBe('MC Wed 11/4');
+    expect(api.createEvent.mock.calls[0][3].title).toBe('MC 11/4 alts');
+  });
+
   it('fills in the form from the options, with \\n as a new line', async () => {
     const { interaction } = await run('create', {
       raid: 'Onyxia',

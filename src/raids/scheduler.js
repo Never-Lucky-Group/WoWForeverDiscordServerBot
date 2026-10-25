@@ -234,7 +234,7 @@ export class RaidScheduler {
           `**${escapeMarkdown(guild.name)}**: the weekly **${escapeMarkdown(eventConfig.name)}** ` +
           `sign-up sheet for ${formatDate(date)} could not be posted in <#${eventConfig.channelId}>. ` +
           `${reason}\n\nThe bot tries again every 10 minutes, and tells you again tomorrow if it ` +
-          'still fails. An Officer can check the event with `/raidsetup event list`, for example ' +
+          'still fails. An Officer can check the event with `/raidsetup panel`, for example ' +
           'that its template ID is right.',
         allowedMentions: { parse: [] },
       });

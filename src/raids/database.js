@@ -1,8 +1,8 @@
 import { openSqliteDatabase } from '../lib/sqlite.js';
 
 // Schema migrations, applied in order by openSqliteDatabase(). Append new migrations to the end and
-// never edit one that has shipped.
-const MIGRATIONS = [
+// never edit one that has shipped. Exported for the migration tests.
+export const MIGRATIONS = [
   `
   -- A member's absence from raids. Dates are YYYY-MM-DD in the server's raid time zone; both ends
   -- are inclusive. AUTOINCREMENT so a cancelled absence's number is never reused.
@@ -125,6 +125,16 @@ const MIGRATIONS = [
     posted_at INTEGER NOT NULL,      -- Unix seconds
     PRIMARY KEY (guild_id, raid_event_id, event_date)
   );
+  `,
+  `
+  -- A weekly sheet is posted a number of hours after the previous week's raid starts, instead of
+  -- a number of days before its own start. Days ahead d becomes (7 - d) days after; more than 7
+  -- days ahead, which no longer exists, becomes when the previous raid starts.
+  ALTER TABLE raid_events ADD COLUMN post_after_hours INTEGER;
+  UPDATE raid_events
+    SET post_after_hours = CASE WHEN post_days_ahead >= 7 THEN 0 ELSE (7 - post_days_ahead) * 24 END
+    WHERE weekday IS NOT NULL;
+  ALTER TABLE raid_events DROP COLUMN post_days_ahead;
   `,
 ];
 

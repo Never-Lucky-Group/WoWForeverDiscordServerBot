@@ -10,8 +10,30 @@ export const DEFAULT_REMINDER_HOURS = [48, 24];
 // A Discord dropdown or autocomplete list holds at most 25 options.
 export const MAX_EVENTS = 25;
 export const MAX_REMINDER_HOURS = 5;
-// Reminders are sent at most a week before an event, the longest postDaysAhead allows.
+// Reminders are sent at most a week before an event, the earliest a weekly sheet is posted.
 export const MAX_REMINDER_HOUR = 168;
+
+// When a weekly event's sheet is posted: this many hours after the previous week's raid starts
+// (weekly.postAfterHours), so a guild can post the next sheet once tonight's raid is over. The
+// panel and /raidsetup offer these choices.
+export const POST_AFTER_HOURS = [0, 1, 2, 3, 4, 5, 6, 8, 12, 24, 48, 72, 96, 120, 144];
+export const DEFAULT_POST_AFTER_HOURS = 0;
+const WEEK_HOURS = 7 * 24;
+
+// How many hours before a weekly event starts its sheet is posted (ignoring daylight saving).
+export function postLeadHours(weekly) {
+  return WEEK_HOURS - weekly.postAfterHours;
+}
+
+// "when the previous raid starts", "3 hours after the previous raid starts", "2 days after …".
+export function postAfterText(hours) {
+  if (hours === 0) return 'when the previous raid starts';
+  const amount =
+    hours % 24 === 0
+      ? `${hours / 24} day${hours === 24 ? '' : 's'}`
+      : `${hours} hour${hours === 1 ? '' : 's'}`;
+  return `${amount} after the previous raid starts`;
+}
 
 export function defaultSettings() {
   return {
@@ -76,7 +98,7 @@ export function setupProblems({ settings, events }, guildConfig) {
     if (!roleId) {
       problems.push(
         `"${event.name}" has no roster role, and there is no shared roster role. Give it a role, ` +
-          'or set one with `/raidsetup settings set roster-role`.',
+          'or set a shared one in the raid settings.',
       );
       continue;
     }
@@ -98,13 +120,14 @@ export function setupProblems({ settings, events }, guildConfig) {
   // skipped, so a reminder at or before the posting time would never be sent.
   for (const event of events) {
     if (!event.weekly) continue;
-    const postHours = event.weekly.postDaysAhead * 24;
+    const postHours = postLeadHours(event.weekly);
     const tooEarly = settings.reminderHours.filter((hours) => hours >= postHours);
     if (tooEarly.length) {
       problems.push(
-        `"${event.name}" is posted ${event.weekly.postDaysAhead} days (${postHours} hours) ` +
-          `ahead, so the ${tooEarly.join(', ')}-hour reminder${tooEarly.length > 1 ? 's' : ''} ` +
-          'would never be sent for it. Lower the reminder hours or post it earlier.',
+        `"${event.name}" is posted ${postAfterText(event.weekly.postAfterHours)}, ` +
+          `${postHours} hours before it starts, so the ${tooEarly.join(', ')}-hour ` +
+          `reminder${tooEarly.length > 1 ? 's' : ''} would never be sent for it. Lower the ` +
+          'reminder hours or post it earlier.',
       );
     }
   }

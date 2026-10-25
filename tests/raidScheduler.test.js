@@ -283,7 +283,7 @@ describe('RaidScheduler reminders', () => {
 });
 
 describe('RaidScheduler weekly posts', () => {
-  // Molten Core is weekly on Wednesday 19:30 UTC, posted 7 days ahead.
+  // Molten Core is weekly on Wednesday 19:30 UTC, posted when the previous raid starts.
   it('posts a weekly event once it is due, only once', async () => {
     const { scheduler, api, clock, store } = setup({
       events: [],
@@ -324,6 +324,24 @@ describe('RaidScheduler weekly posts', () => {
     expect(
       store.findPostedEvent(GUILD_A.id, storedEvent(store, 'Molten Core').id, '2026-11-04'),
     ).not.toBeNull();
+  });
+
+  it("fills the raid's date into a weekly event's title", async () => {
+    const raidSetup = { events: [{ ...MOLTEN_CORE, title: 'Molten Core {day} {date}' }, ONYXIA] };
+    const { scheduler, api } = setup({ events: [], raidSetup, now: EVENT_START - 7 * 24 * HOUR });
+    await scheduler.tick();
+    expect(api.createEvent.mock.calls[0][3].title).toBe('Molten Core Wed 11/4');
+  });
+
+  it("does not post a dated weekly event over one posted by hand with the event's name", async () => {
+    const raidSetup = { events: [{ ...MOLTEN_CORE, title: 'MC {date}' }, ONYXIA] };
+    const { scheduler, api } = setup({
+      events: [raidEvent({ title: 'Molten Core', startTime: EVENT_START })],
+      raidSetup,
+      now: EVENT_START - 7 * 24 * HOUR,
+    });
+    await scheduler.tick();
+    expect(api.createEvent).not.toHaveBeenCalled();
   });
 
   it('posts a weekly event even if another event in the channel starts at the same time', async () => {
@@ -382,7 +400,8 @@ describe('RaidScheduler weekly posts', () => {
   });
 
   it('does not post events that are not due yet', async () => {
-    const raidSetup = withWeekly({ weekday: 'wednesday', time: '19:30', postDaysAhead: 2 });
+    // Posted 5 days after the previous raid, 2 days before this one.
+    const raidSetup = withWeekly({ weekday: 'wednesday', time: '19:30', postAfterHours: 120 });
     const { scheduler, api } = setup({ events: [], raidSetup, now: EVENT_START - 3 * 24 * HOUR });
     await scheduler.tick();
     expect(api.createEvent).not.toHaveBeenCalled();

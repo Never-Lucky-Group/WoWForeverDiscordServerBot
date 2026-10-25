@@ -6,20 +6,21 @@ import { isTimeZone } from '../../lib/time.js';
 import { deferPrivate, sendPrivate } from '../../loot/discord/privateReply.js';
 import { formatDate, parseTimeInput, todayIn } from '../dates.js';
 import { rosterRoleIds } from '../schedule.js';
+import { titleProblem } from '../titles.js';
 import {
+  DEFAULT_POST_AFTER_HOURS,
   MAX_REMINDER_HOUR,
   MAX_REMINDER_HOURS,
   defaultSettings,
   eventRoleId,
   loadSetup,
+  postAfterText,
   setupProblems,
 } from '../setup.js';
 
 // How far ahead the sheets in a channel are looked up when its event is removed or moved, so they
 // keep their reminders until they start.
 export const WATCH_LOOKAHEAD_SECONDS = 365 * 24 * 60 * 60;
-// What `days-ahead` defaults to when a weekly time is first given.
-export const DEFAULT_POST_DAYS_AHEAD = 7;
 // Discord's embed limits.
 const FIELD_NAME_LIMIT = 256;
 const FIELD_VALUE_LIMIT = 1024;
@@ -28,20 +29,37 @@ const EMBED_TOTAL_LIMIT = 6000;
 
 // /raidsetup event add
 export async function addEvent(interaction, context) {
-  const { guild, member, guildConfig, store, timeZone } = context;
   const read = readEventOptions(interaction.options);
   if (read.error) {
     await sendPrivate(interaction, { content: read.error });
     return;
   }
-  const { fields } = read;
   const weekly = readWeekly(interaction.options, undefined);
   if (weekly.error) {
     await sendPrivate(interaction, { content: weekly.error });
     return;
   }
-  const event = { ...fields, ...(weekly.weekly && { weekly: weekly.weekly }) };
+  const result = saveNewEvent(context, {
+    ...read.fields,
+    ...(weekly.weekly && { weekly: weekly.weekly }),
+  });
+  if (result.error) {
+    await sendPrivate(interaction, { content: result.error });
+    return;
+  }
+  const { event, setup, notes } = result;
+  await sendPrivate(interaction, {
+    content:
+      `Added **${escapeMarkdown(event.name)}**: ${eventSummary(event, setup, context.timeZone)}` +
+      notesText(notes),
+  });
+}
 
+// Adds `event` (its fields, without an ID) to the server's setup, for /raidsetup event add and
+// the setup panel. Returns { error } or { event, setup, notes }: the event as stored, the setup
+// after the change and notes for the Officer.
+export function saveNewEvent(context, event) {
+  const { guild, member, guildConfig, store } = context;
   const now = nowSeconds();
   const result = transaction(store.db, () => {
     const before = loadSetup(store, guildConfig, now);
@@ -53,28 +71,38 @@ export async function addEvent(interaction, context) {
     const id = store.addRaidEvent(guild.id, event, member.id, now);
     return { id, before, after: loadSetup(store, guildConfig, now) };
   });
-  if (result.problems) {
-    await sendPrivate(interaction, { content: refusal(result.problems) });
-    return;
-  }
+  if (result.problems) return { error: refusal(result.problems) };
 
   logger.info(
     { guildId: guild.id, userId: member.id, raidEventId: result.id, event },
     'Added a raid event',
   );
   context.scheduler?.refresh();
-  await sendPrivate(interaction, {
-    content:
-      `Added **${escapeMarkdown(event.name)}**: ${eventSummary(event, result.after, timeZone)}\n\n` +
+  return {
+    event: result.after.events.find((stored) => stored.id === result.id),
+    setup: result.after,
+    notes: [
       `Run \`/raid create\` once to check that Raid-Helper accepts template ` +
-      `\`${escapeMarkdown(event.templateId)}\`.` +
+        `\`${escapeMarkdown(event.templateId)}\`.`,
       integrationsNote(result.before, result.after),
-  });
+    ].filter(Boolean),
+  };
+}
+
+// What adding `event` to the server's setup now would break, as a refusal message, or null. The
+// setup panel checks the first form of a new event with it before asking for the rest.
+export function newEventProblem({ store, guildConfig }, event) {
+  const setup = loadSetup(store, guildConfig, nowSeconds());
+  const problems = setupProblems(
+    { settings: setup, events: [...setup.events, event] },
+    guildConfig,
+  );
+  return problems.length ? refusal(problems) : null;
 }
 
 // /raidsetup event edit
 export async function editEvent(interaction, context) {
-  const { guild, member, guildConfig, setup, store, timeZone } = context;
+  const { setup, timeZone } = context;
   const current = findEvent(setup.events, interaction.options.getString('event', true));
   if (!current) {
     await sendPrivate(interaction, { content: NO_SUCH_EVENT_MESSAGE });
@@ -99,32 +127,53 @@ export async function editEvent(interaction, context) {
     return;
   }
 
-  // Applied once here to check it, and again to the stored event inside the transaction below,
-  // so a change another Officer made meanwhile is not overwritten.
-  const applyTo = (event) => {
-    const updated = { ...event, ...read.fields };
-    if (clear === 'role') delete updated.raiderRoleId;
-    else if (clear === 'weekly') delete updated.weekly;
-    else if (clear) delete updated[clear];
-    if (weeklyGiven) {
-      const weekly = readWeekly(interaction.options, event.weekly);
-      if (weekly.error) return { error: weekly.error };
-      updated.weekly = weekly.weekly;
-    }
-    return { updated };
-  };
-  const preview = applyTo(current);
-  if (preview.error) {
-    await sendPrivate(interaction, { content: preview.error });
-    return;
-  }
-  if (changedFields(current, preview.updated).length === 0) {
+  const result = await saveEventChange(
+    context,
+    current,
+    (event) => {
+      const updated = { ...event, ...read.fields };
+      if (clear === 'role') delete updated.raiderRoleId;
+      else if (clear === 'weekly') delete updated.weekly;
+      else if (clear) delete updated[clear];
+      if (weeklyGiven) {
+        const weekly = readWeekly(interaction.options, event.weekly);
+        if (weekly.error) return { error: weekly.error };
+        updated.weekly = weekly.weekly;
+      }
+      return { updated };
+    },
+    // Raid-Helper may take longer than Discord's 3-second reply deadline.
+    { beforeSlowWork: () => deferPrivate(interaction) },
+  );
+  if (result.unchanged) {
     await sendPrivate(interaction, { content: 'Nothing to change: give a new value or `clear`.' });
     return;
   }
+  if (result.error) {
+    await sendPrivate(interaction, { content: result.error });
+    return;
+  }
+  const { event, notes } = result;
+  await sendPrivate(interaction, {
+    content:
+      `Updated **${escapeMarkdown(event.name)}**: ${eventSummary(event, result.setup, timeZone)}` +
+      notesText(notes),
+  });
+}
 
-  // Raid-Helper may take longer than Discord's 3-second reply deadline.
-  await deferPrivate(interaction);
+// Changes the event `current`, for /raidsetup event edit and the setup panel. `change(event)`
+// returns { updated } or { error }; it is applied once to `current` to check it, and again to the
+// stored event inside the transaction, so a change another Officer made meanwhile is not
+// overwritten. `beforeSlowWork` is awaited once the change is checked, before Raid-Helper is
+// asked anything. Returns { unchanged: true }, { error } or { event, setup, notes }: the event as
+// changed, the setup after the change and notes for the Officer.
+export async function saveEventChange(context, current, change, { beforeSlowWork } = {}) {
+  const { guild, member, guildConfig, store, timeZone } = context;
+  const preview = change(current);
+  if (preview.error) return { error: preview.error };
+  if (changedFields(current, preview.updated).length === 0) return { unchanged: true };
+
+  await beforeSlowWork?.();
   const now = nowSeconds();
   const moving = preview.updated.channelId !== current.channelId;
   const sheets = moving ? await postedSheets(context, current.channelId, now) : null;
@@ -133,7 +182,7 @@ export async function editEvent(interaction, context) {
     const before = loadSetup(store, guildConfig, now);
     const stored = before.events.find((event) => event.id === current.id);
     if (!stored) return { problems: [`"${current.name}" was removed meanwhile.`] };
-    const { updated, error } = applyTo(stored);
+    const { updated, error } = change(stored);
     if (error) return { problems: [error] };
     const events = before.events.map((event) => (event.id === stored.id ? updated : event));
     const problems = setupProblems({ settings: before, events }, guildConfig);
@@ -151,10 +200,7 @@ export async function editEvent(interaction, context) {
       watched,
     };
   });
-  if (result.problems) {
-    await sendPrivate(interaction, { content: refusal(result.problems) });
-    return;
-  }
+  if (result.problems) return { error: refusal(result.problems) };
   const { stored, updated, changes } = result;
 
   logger.info(
@@ -175,28 +221,45 @@ export async function editEvent(interaction, context) {
   const postedDates = changes.includes('weekly')
     ? store.postedDates(guild.id, stored.id, todayIn(timeZone))
     : [];
-  await sendPrivate(interaction, {
-    content:
-      `Updated **${escapeMarkdown(updated.name)}**: ${eventSummary(updated, result.after, timeZone)}` +
-      (postedDates.length
-        ? `\n\nSheets already posted (${postedDates.map(formatDate).join(', ')}) are not moved; ` +
+  return {
+    event: updated,
+    setup: result.after,
+    notes: [
+      postedDates.length
+        ? `Sheets already posted (${postedDates.map(formatDate).join(', ')}) are not moved; ` +
           'change or delete them in Raid-Helper.'
-        : '') +
-      (result.watched ? `\n\n${watchNote(stored.channelId, sheets)}` : '') +
+        : '',
+      result.watched ? watchNote(stored.channelId, sheets) : '',
       integrationsNote(result.before, result.after),
-  });
+    ].filter(Boolean),
+  };
 }
 
 // /raidsetup event remove
 export async function removeEvent(interaction, context) {
-  const { guild, member, guildConfig, setup, store } = context;
-  const event = findEvent(setup.events, interaction.options.getString('event', true));
+  const event = findEvent(context.setup.events, interaction.options.getString('event', true));
   if (!event) {
     await sendPrivate(interaction, { content: NO_SUCH_EVENT_MESSAGE });
     return;
   }
+  const result = await deleteEvent(context, event, {
+    beforeSlowWork: () => deferPrivate(interaction),
+  });
+  await sendPrivate(interaction, {
+    content:
+      result.error ??
+      `Removed **${escapeMarkdown(result.event.name)}**. It is no longer posted or offered in ` +
+        '`/raid create`.' +
+        result.notes.map((note) => ` ${note}`).join(''),
+  });
+}
 
-  await deferPrivate(interaction);
+// Removes the event `event`, for /raidsetup event remove and the setup panel. `beforeSlowWork` is
+// awaited before Raid-Helper is asked for the sheets already posted. Returns { error } or
+// { event, notes }: the event as it was stored and notes for the Officer.
+export async function deleteEvent(context, event, { beforeSlowWork } = {}) {
+  const { guild, member, guildConfig, store } = context;
+  await beforeSlowWork?.();
   const now = nowSeconds();
   const sheets = await postedSheets(context, event.channelId, now);
   // Read again, in case another Officer changed or removed the event while Raid-Helper was asked.
@@ -212,12 +275,7 @@ export async function removeEvent(interaction, context) {
       watchLeftChannel(store, guild.id, stored, remaining, sheets, before);
     return { stored, watched };
   });
-  if (result.gone) {
-    await sendPrivate(interaction, {
-      content: `**${escapeMarkdown(event.name)}** was already removed.`,
-    });
-    return;
-  }
+  if (result.gone) return { error: `**${escapeMarkdown(event.name)}** was already removed.` };
   const { stored, watched } = result;
 
   logger.info(
@@ -225,12 +283,7 @@ export async function removeEvent(interaction, context) {
     'Removed a raid event',
   );
   context.scheduler?.refresh();
-  await sendPrivate(interaction, {
-    content:
-      `Removed **${escapeMarkdown(stored.name)}**. It is no longer posted or offered in ` +
-      '`/raid create`.' +
-      (watched ? ` ${watchNote(stored.channelId, sheets)}` : ''),
-  });
+  return { event: stored, notes: watched ? [watchNote(stored.channelId, sheets)] : [] };
 }
 
 // /raidsetup event list. With many events the list is split over several messages, because
@@ -259,7 +312,7 @@ export async function listEvents(interaction, context) {
   if (fields.length === 0) {
     const embed = new EmbedBuilder()
       .setTitle('Raid events')
-      .setDescription('No raid events yet. Add one with `/raidsetup event add`.');
+      .setDescription('No raid events yet. Add one with `/raidsetup panel`.');
     await sendPrivate(interaction, { embeds: [embed] });
     return;
   }
@@ -296,7 +349,6 @@ export async function showSettings(interaction, context) {
 
 // /raidsetup settings set
 export async function setSettings(interaction, context) {
-  const { guild, member, guildConfig, store } = context;
   const { options } = interaction;
   const patch = {};
   const absenceChannel = options.getChannel('absence-channel');
@@ -345,6 +397,25 @@ export async function setSettings(interaction, context) {
     return;
   }
 
+  const result = saveSettings(context, patch);
+  if (result.error) {
+    await sendPrivate(interaction, { content: result.error });
+    return;
+  }
+  await sendPrivate(interaction, {
+    content:
+      (result.changes.length
+        ? 'Saved the raid settings.'
+        : 'The settings already had those values.') + notesText(result.notes),
+    embeds: [settingsEmbed(result.setup, result.setup.timeZone)],
+  });
+}
+
+// Changes the settings in `patch` and keeps the rest, for /raidsetup settings set and the setup
+// panel. Returns { error } or { changes, setup, notes }: the names of the settings that changed,
+// the setup after the change and notes for the Officer.
+export function saveSettings(context, patch) {
+  const { guild, member, guildConfig, store } = context;
   const now = nowSeconds();
   const result = transaction(store.db, () => {
     const before = loadSetup(store, guildConfig, now);
@@ -355,10 +426,7 @@ export async function setSettings(interaction, context) {
     store.saveSettings(guild.id, settings, member.id, now);
     return { before, current, settings, after: loadSetup(store, guildConfig, now) };
   });
-  if (result.problems) {
-    await sendPrivate(interaction, { content: refusal(result.problems) });
-    return;
-  }
+  if (result.problems) return { error: refusal(result.problems) };
 
   const changes = Object.keys(patch).filter(
     (field) => JSON.stringify(result.current[field]) !== JSON.stringify(result.settings[field]),
@@ -381,7 +449,7 @@ export async function setSettings(interaction, context) {
   if (changes.includes('timeZone')) {
     notes.push(
       'Sheets already posted keep their times, and absences keep their dates. Weekly times and ' +
-        'dates typed in commands are read in the new time zone from now on.',
+        'dates typed in commands and forms are read in the new time zone from now on.',
     );
   }
   if (changes.includes('reminderHours')) {
@@ -390,18 +458,16 @@ export async function setSettings(interaction, context) {
         'for one of them is sent at the next check, within 10 minutes.',
     );
   }
-  await sendPrivate(interaction, {
-    content:
-      (changes.length ? 'Saved the raid settings.' : 'The settings already had those values.') +
-      notes.map((note) => `\n\n${note}`).join('') +
-      integrationsNote(result.before, result.after),
-    embeds: [settingsEmbed(result.after, result.after.timeZone)],
-  });
+  const integrations = integrationsNote(result.before, result.after);
+  if (integrations) notes.push(integrations);
+  return { changes, setup: result.after, notes };
 }
 
 export const NO_SUCH_EVENT_MESSAGE = 'There is no such raid event. Choose one from the list.';
+// The leader gets the reports by DM, which a bot cannot receive.
+export const LEADER_BOT_MESSAGE = 'The leader must be a person, not a bot: they get the reports.';
 
-const WEEKLY_OPTIONS = ['weekday', 'time', 'days-ahead'];
+const WEEKLY_OPTIONS = ['weekday', 'time', 'post-after'];
 // `clear` choices of /raidsetup settings set → the setting they clear.
 const CLEARABLE_SETTINGS = {
   'absence-channel': 'absenceChannelId',
@@ -437,9 +503,7 @@ function readEventOptions(options, { partial = false } = {}) {
   }
   const leader = options.getUser('leader', !partial);
   if (leader) {
-    // The leader gets the reports by DM, which a bot cannot receive.
-    if (leader.bot)
-      return { error: 'The leader must be a person, not a bot: they get the reports.' };
+    if (leader.bot) return { error: LEADER_BOT_MESSAGE };
     fields.leaderId = leader.id;
   }
   const role = options.getRole('role');
@@ -448,6 +512,8 @@ function readEventOptions(options, { partial = false } = {}) {
     const text = options.getString(option)?.trim();
     if (text) fields[option] = text;
   }
+  const titleError = fields.title && titleProblem(fields.title);
+  if (titleError) return { error: titleError };
   return { fields };
 }
 
@@ -456,8 +522,8 @@ function readEventOptions(options, { partial = false } = {}) {
 function readWeekly(options, current) {
   const weekday = options.getString('weekday') ?? current?.weekday;
   const timeText = options.getString('time');
-  const daysAhead = options.getInteger('days-ahead');
-  if (!weekday && timeText === null && daysAhead === null) return {};
+  const postAfter = options.getInteger('post-after');
+  if (!weekday && timeText === null && postAfter === null) return {};
   let time = current?.time;
   if (timeText !== null) {
     time = parseTimeInput(timeText);
@@ -474,7 +540,7 @@ function readWeekly(options, current) {
     weekly: {
       weekday,
       time,
-      postDaysAhead: daysAhead ?? current?.postDaysAhead ?? DEFAULT_POST_DAYS_AHEAD,
+      postAfterHours: postAfter ?? current?.postAfterHours ?? DEFAULT_POST_AFTER_HOURS,
     },
   };
 }
@@ -554,14 +620,14 @@ function integrationsNote(before, after) {
   const added = [...rosterRoleIds(after)].filter((roleId) => !known.has(roleId));
   if (added.length === 0) return '';
   return (
-    `\n\nMembers of ${added.map((roleId) => `<@&${roleId}>`).join(', ')} see \`/absence\` only ` +
+    `Members of ${added.map((roleId) => `<@&${roleId}>`).join(', ')} see \`/absence\` only ` +
     'once the role is added under **Server Settings → Integrations →** this bot ' +
     '**→ /absence**.'
   );
 }
 
 // One event's setup as lines, e.g. for /raidsetup event list.
-function eventSummary(event, setup, timeZone) {
+export function eventSummary(event, setup, timeZone) {
   const roleId = eventRoleId(event, setup);
   const lines = [
     `Posts in <#${event.channelId}> with template \`${escapeMarkdown(event.templateId)}\`; ` +
@@ -574,8 +640,7 @@ function eventSummary(event, setup, timeZone) {
           : 'none yet'),
     event.weekly
       ? `Weekly: ${capitalize(event.weekly.weekday)} at ${event.weekly.time} (${timeZone}), ` +
-        `posted ${event.weekly.postDaysAhead} day${event.weekly.postDaysAhead === 1 ? '' : 's'} ` +
-        'ahead'
+        `posted ${postAfterText(event.weekly.postAfterHours)}`
       : 'Posted only with `/raid create`',
   ];
   if (event.title) lines.push(`Title: ${escapeMarkdown(event.title)}`);
@@ -639,6 +704,11 @@ export function parseReminderHours(text) {
 export function canonicalTimeZone(text) {
   if (!isTimeZone(text)) return null;
   return new Intl.DateTimeFormat('en-US', { timeZone: text }).resolvedOptions().timeZone;
+}
+
+// `notes` as paragraphs after a reply's first line.
+function notesText(notes) {
+  return notes.map((note) => `\n\n${note}`).join('');
 }
 
 function refusal(problems) {

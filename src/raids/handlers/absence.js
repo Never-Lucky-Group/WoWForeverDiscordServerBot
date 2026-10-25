@@ -17,7 +17,7 @@ const NO_MENTIONS = { parse: [] };
 
 export const NO_ABSENCE_CHANNEL_MESSAGE =
   'The absences channel is not set yet, so absences cannot be recorded. Ask an Officer to set ' +
-  'it with `/raidsetup settings set absence-channel`.';
+  'it under Settings in `/raidsetup panel`.';
 
 // /absence add: stores an absence and posts it in the absences channel.
 export async function addAbsence(interaction, context) {
