@@ -12,6 +12,7 @@ The bot is used mainly in a single server but supports several. It only operates
 - **Direct messages** from members of any allowlisted server get a placeholder reply. DMs from anyone else are ignored.
 - **New members** who join a server get that server's configured **join role**, if it has one. Bots that join are skipped. Existing members are never changed.
 - **Loot tracking** (`/loot`): Officers who also hold the server's **loot role** import [Gargul](https://github.com/papa-smurf/Gargul) loot exports and ask who received what. See [Loot tracking](#loot-tracking).
+- **Raid sign-ups** (`/raid`, `/raidsetup`, `/absence`): the bot posts [Raid-Helper](https://raid-helper.xyz) sign-up sheets, DMs each event's leader who has not signed up yet, and lets raiders record when they will be away. See [Raid sign-ups](#raid-sign-ups).
 
 ## Requirements
 
@@ -61,13 +62,15 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
 
 `.env` holds secrets and runtime settings. See `.env.example`.
 
-| Variable            | Required | Description                                                  |
-| ------------------- | -------- | ------------------------------------------------------------ |
-| `DISCORD_TOKEN`     | yes      | Bot token                                                    |
-| `DISCORD_CLIENT_ID` | yes      | Application ID                                               |
-| `LOG_LEVEL`         | no       | `fatal`, `error`, `warn`, `info` (default), `debug`, `trace` |
-| `BOT_CONFIG_PATH`   | no       | Path to the allowlist config (default `config.json`)         |
-| `LOOT_DB_PATH`      | no       | Loot database file (default `data/loot.sqlite`)              |
+| Variable               | Required | Description                                                                                                            |
+| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `DISCORD_TOKEN`        | yes      | Bot token                                                                                                              |
+| `DISCORD_CLIENT_ID`    | yes      | Application ID                                                                                                         |
+| `LOG_LEVEL`            | no       | `fatal`, `error`, `warn`, `info` (default), `debug`, `trace`                                                           |
+| `BOT_CONFIG_PATH`      | no       | Path to the allowlist config (default `config.json`)                                                                   |
+| `LOOT_DB_PATH`         | no       | Loot database file (default `data/loot.sqlite`)                                                                        |
+| `RAIDS_DB_PATH`        | no       | Raids database file: raid setup, absences and reminders (default `data/raids.sqlite`)                                  |
+| `RAID_HELPER_API_KEYS` | no       | Each server's Raid-Helper API key, which turns raid sign-ups on there (see [Raid sign-ups](#setting-up-raid-sign-ups)) |
 
 `config.json` is the server allowlist. It is gitignored because this repository is public. See `config.example.json`.
 
@@ -94,6 +97,7 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
 - `lootRoleId` is optional. The `/loot` commands need this role **and** the Officer role. Leave it out and `/loot` is disabled in that server. It may be the Officer role itself, but not the join role.
 - `raids` is optional: up to 25 unique raid names (up to 100 characters each) offered when labelling an import. Importing needs at least one. Renaming a raid here does not rename it in loot already imported.
 - `raidReset` is optional: when the weekly raid lockout resets, as a lowercase `weekday`, a 24-hour `time` and an [IANA time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). It defaults to Tuesday 15:00 UTC. The `weeks` filter counts back from it, and `from`/`to` dates are read in its time zone.
+- Raid sign-ups are not set up in `config.json` but in Discord with `/raidsetup`; see [Raid sign-ups](#raid-sign-ups). A leftover `raidHelper` block stops the bot at startup with a message to remove it.
 
 ### Test bots and production
 
@@ -140,6 +144,110 @@ Gargul does not record which raid an award came from, which is why each session 
 - Items given to the disenchanter are stored but never counted for a character.
 - Replies are visible only to the person who asked. Long results have **Previous**/**Next** buttons, and **Download CSV** sends the full result as a file. The buttons stop working after 10 minutes.
 - An award deleted in Gargul is not removed by later imports, because it is simply missing from the new file. Use `/loot imports replace` with a fresh export of that raid.
+
+## Raid sign-ups
+
+[Raid-Helper](https://raid-helper.xyz) is the bot the server uses for raid sign-up sheets. This bot works alongside it through [Raid-Helper's API](https://raid-helper.xyz/documentation/api):
+
+- Officers set up the **raid events** the bot can post with `/raidsetup panel` (buttons and forms) or the other `/raidsetup` subcommands: each one's channel, template, leader and roster role, and optionally a weekly time.
+- The bot posts each **weekly event** when the previous week's raid starts, or a chosen time after it (for example once that raid is over), and Officers post one-off events with `/raid create`.
+- Before each event in the raid channels, whoever created it, it DMs the **event leader** a report of the raiders who have not signed up yet.
+- **Raiders** record the days they will be away with `/absence`, so they are not reported as missing on those days.
+
+A **raider** is anyone with the roster role of the event's channel: the raid event's own role, or the shared roster role. Any sign-up counts as an answer, including Tentative, Late, Bench and Absence; the report lists members signed up only as Tentative separately, and members with an absence separately. A member who has an absence for the date but signed up anyway (other than as Absence) counts as answered, and is listed under **Signed up, but has an absence** so the leader can check which is right.
+
+### Setting up raid sign-ups
+
+1. In the server, run Raid-Helper's `/apikey` (it needs the Administrator or Manage Server permission) and copy the key.
+2. Add it to `.env` as a JSON object of server ID → key, in single quotes so a `#` in a key is not read as a comment, and restart the bot:
+
+   ```bash
+   RAID_HELPER_API_KEYS='{"SERVER_ID":"API_KEY"}'
+   ```
+
+   The key is what turns raid sign-ups on for that server: `/raid`, `/raidsetup` and `/absence` then show up for Officers. Anyone with the key can create and change the server's Raid-Helper events, so keep it out of `config.json` and out of chat. If it leaks, run `/apikey` again to replace it. The bot warns at startup about a key for a server that is not in the allowlist.
+
+   Steps 3 and 4 are easiest with `/raidsetup panel`: a private panel with the settings and events, whose buttons open short forms with pickers for channels, roles and people. It closes after 14 minutes without use; run it again to reopen it. The slash commands below do the same.
+
+3. Set the server-wide settings with **Settings** in the panel, or with `/raidsetup settings set`, which changes only the options given (`/raidsetup settings show` shows them all). The form offers the raid reset's time zone and 20 common ones, US first; set any other with `/raidsetup settings set`. In the form, empty reminder hours mean none.
+
+   | Option            | Default                     | Description                                                                                                                                                                                                                                                                                                                                                             |
+   | ----------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `absence-channel` | none                        | Where `/absence add` posts new absences. Absences cannot be recorded until it is set. The bot needs **View Channel** and **Send Messages** there.                                                                                                                                                                                                                       |
+   | `roster-role`     | none                        | Members expected to sign up for events without a role of their own. Needed unless every event has its own. Must not be the @everyone role or the join role.                                                                                                                                                                                                             |
+   | `time-zone`       | `raidReset`'s (UTC without) | [IANA time zone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) for event times and absence dates; it autocompletes. Use the zone raid times are planned in, normally the one set in Raid-Helper's own server settings: `time:19:00` means 19:00 in this zone.                                                                                           |
+   | `reminder-hours`  | `48, 24`                    | Up to 5 different whole hours (1-168) before an event at which its leader gets a report, or `none`. A final report is also sent when Raid-Helper closes sign-ups, if that is before the start. Each must be less than the hours between posting and start of every weekly event (168 minus its `post-after` hours), since the bot only sees an event once it is posted. |
+   | `member-dms`      | off                         | Also DMs each missing raider (see [Member DMs](#member-dms)).                                                                                                                                                                                                                                                                                                           |
+
+   In the command, `clear` unsets the absences channel, the shared roster role or the time zone; in the form, empty the field.
+
+4. Add each kind of raid with **Add event** in the panel, or with `/raidsetup event add`, up to 25 per server. In the panel a new event takes two forms, the basics (name to roster role) and then the weekly time, title and description, and is saved only when the second is submitted. The first form fills in the template most of the server's events use, and you as leader.
+
+   | Option                          | Required | Description                                                                                                                                                                                                                                                                                                                                                                  |
+   | ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `name`                          | yes      | Unique in the server (any case). Shown in `/raid create`, and the event title unless `title` is set.                                                                                                                                                                                                                                                                         |
+   | `channel`                       | yes      | The sign-up channel Raid-Helper posts it in (a text or announcement channel).                                                                                                                                                                                                                                                                                                |
+   | `template`                      | yes      | A built-in Raid-Helper template ID, such as `wowforever`. It suggests the templates of the server's events; Raid-Helper cannot list them. Run `/raid create` once afterwards to check it.                                                                                                                                                                                    |
+   | `leader`                        | yes      | The event leader, who gets the reports. Not a bot.                                                                                                                                                                                                                                                                                                                           |
+   | `role`                          | no       | The roster role for a separate raid group (see below). Defaults to the shared roster role.                                                                                                                                                                                                                                                                                   |
+   | `title`                         | no       | Event title (up to 100 characters with the date filled in). `{date}` becomes the raid's date, such as `11/4`, and `{day}` its weekday, such as `Tue`, so `Molten Core {date}` posts "Molten Core 11/4" one week and "Molten Core 11/11" the next; `/raid create` fills them in too. Events may share a title, e.g. one raid run on two days.                                 |
+   | `description`                   | no       | Event description (up to 1000 characters). In the command, type `\n` for a new line.                                                                                                                                                                                                                                                                                         |
+   | `weekday`, `time`, `post-after` | no       | Post it automatically every week, for `weekday` at the 24-hour `time`. `post-after` is when: by default when the previous week's raid starts, or 1-12 hours or 1-6 days after it, for example once that raid is over. The hours count on the clock of the raid time zone, so daylight saving does not move them. Without `weekday` and `time`, only `/raid create` posts it. |
+
+   **Separate raid groups.** When several groups raid separately (for example two 20-man groups), give each group its own role and its own sign-up channel, and set that role as `role` on the group's events. The bot finds an event's roster by its channel, so each group's reports list only that group, including for events posted by hand with Raid-Helper's `/create`. Events in one channel must use the same role. Each event has one weekly time, so a raid run twice a week is two events with different `name`s (they may share a `title`). An absence covers every group the member is in.
+
+5. Under **Server Settings → Integrations →** the bot **→ Commands → /absence**, add every roster role (the shared one and each event's). The bot-wide setting shows its commands only to Officers, and a command's own setting overrides it, so raiders can see `/absence`. A bot cannot change this setting, so `/raidsetup` reminds you whenever it sets a roster role that is new to the server.
+
+### Changing the setup
+
+- In `/raidsetup panel`, choose an event to change its **Basics** or **Schedule & text**, or to **Remove** it (it asks first). The forms open with the current values; empty a field to clear it, or choose **Not weekly** to stop posting it every week.
+- `/raidsetup event edit` changes only the options given, and `clear` removes the title, the description, the event's own roster role or its weekly time. `/raidsetup event list` shows every event.
+- Sheets already posted are not moved or retitled by an edit; change or delete them in Raid-Helper. After changing a weekly time, the reply lists the sheets already posted for that event.
+- `/raidsetup event remove` stops posting the event and takes it out of `/raid create`. Sheets already posted in its channel stay in Raid-Helper and keep their reminders and `/raid missing` until they start, unless another event uses that channel. Moving an event to another channel does the same for the old channel. `/raidsetup event list` shows the channels still checked.
+- A change that would break a rule (two events with one name, two roles in one channel, an event without a roster role, reminder hours a weekly event is posted too late for, and so on) is refused with the reason, and nothing changes.
+- New reminder hours apply to sheets already posted too; one that has already passed for a sheet is sent at the next check. A new time zone applies to weekly times and dates typed from then on; posted sheets keep their times and absences their dates.
+- After a change, the bot checks Raid-Helper again at once rather than at the next 10-minute run, so a new event's sheets show up in `/raid missing` straight away and a weekly sheet that is already due is posted within seconds.
+- Every change is logged with who made it and the old and new values.
+
+### How reports work
+
+Every 10 minutes the bot fetches the next 28 days of Raid-Helper events in the raid channels, with their sign-ups. Then:
+
+- **Weekly events** whose posting time has come, and which have not started, are posted, unless the channel already has an event with the same title (any case) that day, for example one an Officer posted by hand; a sheet titled with the event's plain name also counts, so a dated title does not post over one posted by hand. Each is posted once, even when `/raid create` posts the same event at the same moment. If a post fails (for example because of a mistyped template), the bot tries again every run and DMs the event leader Raid-Helper's error once a day until it works.
+- **Reports** go to the event's leader at each reminder hour and when sign-ups close. A report is skipped when nobody is missing and nobody is signed up despite an absence. If the leader cannot be DMed, the bot logs a warning.
+- Reminder points that had passed when the bot first saw an event are skipped, so an event posted 30 hours before it starts gets its first report at 24 hours, not straight away. If the bot was offline over several points, it sends only the latest one.
+- Moving an event to another time makes its reminders fire again.
+
+If Raid-Helper cannot be reached or rejects the API key, the bot logs an error once and tries again every 10 minutes.
+
+### Commands
+
+| Command                                               | Who               | Description                                                                                            |
+| ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| `/raid create raid date [time] [title] [description]` | Officers          | Post a sign-up sheet for a raid event through a form (below)                                           |
+| `/raid missing event`                                 | Officers          | Who has not signed up for an event, right now                                                          |
+| `/raidsetup panel`                                    | Officers          | Set up the raid events and settings with buttons and forms                                             |
+| `/raidsetup event add\|edit\|remove\|list`            | Officers          | Set up the raid events (see [Setting up raid sign-ups](#setting-up-raid-sign-ups))                     |
+| `/raidsetup settings show\|set`                       | Officers          | The server-wide raid settings                                                                          |
+| `/absence add from [to] [reason] [member]`            | Raiders, Officers | Record up to 90 days away (both included; without `to`, one day) and post them in the absences channel |
+| `/absence list [member]`                              | Raiders, Officers | Upcoming absences: your own, or everyone's (or one member's) for Officers                              |
+| `/absence cancel id`                                  | Raiders, Officers | Cancel an absence: your own, or anyone's for Officers. Nothing is posted.                              |
+
+- `member` is for Officers only.
+- `/raid create` checks the raid and date, then opens a form with the **start time**, **title** and **description**. The form is filled in with the `time`, `title` and `description` options or, without them, the event's weekly time, title and description. Change what you need and press **Submit** to post; the description box takes several lines (in the `description` option, type `\n` for a new line). The form must be submitted within 15 minutes. If the time is not valid, nothing is posted and the reply shows what was typed, to copy into the next try.
+- The form's title and description apply to that post only. To change one week of a weekly event, post that date early with them, and the weekly schedule skips it. A post whose title differs from an event already in the channel that day is a separate event.
+- Dates autocomplete with upcoming event dates. Typed dates may be `2026-11-04`, `Nov 4`, `November 4th`, `4 November` or `11/4` (month first), with or without a year; without one, the next such date is used (for `to`, the next one after `from`). The reply shows the date the bot understood.
+- Replies are visible only to the person who ran the command. Posts in the absences channel never ping anyone.
+- After a command's options change (for example after an update), Discord may need a refresh (Ctrl+R) before the new options or suggestions show.
+
+### Member DMs
+
+With `member-dms` on, each raider who has not signed up gets a DM at the reminder points, with **Can make it** and **Can't make it** buttons:
+
+- **Can make it** replies with a link to the event, so they can sign up with their class.
+- **Can't make it** records an absence for the event's date, which takes them off later reports.
+
+Each raider is DMed at most once per event; one whose DMs are closed is tried again at the next point and listed under **Could not DM** in the leader's report. The buttons keep working across restarts until the event starts.
 
 ## Scripts
 
@@ -214,11 +322,11 @@ After the first publish, check the package's visibility under the Never-Lucky-Gr
 On the server, create a directory (for example `/opt/discord-bot`) containing:
 
 - `compose.yml`: a copy of [`deploy/compose.yml`](deploy/compose.yml), with `image:` set to the version to run
-- `.env`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` and optionally `LOG_LEVEL` (see `.env.example`). Leave `BOT_CONFIG_PATH` and `LOOT_DB_PATH` unset. Run `chmod 600 .env`.
+- `.env`: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` and optionally `LOG_LEVEL` and `RAID_HELPER_API_KEYS` (see `.env.example`). Leave `BOT_CONFIG_PATH`, `LOOT_DB_PATH` and `RAIDS_DB_PATH` unset. Run `chmod 600 .env`.
 - `config.json`: the server allowlist. The container runs as uid 1000, which must be able to read it.
-- `data/`: the loot database, mounted at `/app/data`. Create it with `mkdir data && sudo chown 1000:1000 data`. If the bot cannot write to it, it logs an error and runs with the `/loot` commands disabled.
+- `data/`: the loot and raids databases, mounted at `/app/data`. Create it with `mkdir data && sudo chown 1000:1000 data`. If the bot cannot write to it, it logs an error and runs with the `/loot`, `/raid`, `/raidsetup` and `/absence` commands disabled.
 
-To back up the loot data, copy `data/loot.sqlite` together with any `loot.sqlite-wal` and `loot.sqlite-shm` files next to it, ideally while the bot is stopped (`docker compose stop bot`).
+To back up the data, copy `data/loot.sqlite` and `data/raids.sqlite` together with any `-wal` and `-shm` files next to them, ideally while the bot is stopped (`docker compose stop bot`).
 
 Then, from that directory:
 
@@ -299,9 +407,10 @@ src/
   commands/<category>/*.js  slash commands, loaded automatically
   events/*.js               event listeners, loaded automatically
   handlers/                 command dispatcher, DM handler, server allowlist, join role
-  lib/                      shared helpers (logger, membership checks, command builders, command registration, /help pages)
+  lib/                      shared helpers (logger, membership checks, command builders, command registration, /help pages, time zones, SQLite)
   loaders/                  dynamic loaders for commands/ and events/
   loot/                     Gargul loot tracking: export parser, database, queries and /loot handlers
+  raids/                    Raid-Helper sign-ups: API client, database, setup rules, background loop, member DMs, /raid, /raidsetup and /absence handlers
 tests/                      Vitest tests
 tests/fixtures/gargul/      generated sample Gargul JSON export
 ```

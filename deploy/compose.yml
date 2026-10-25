@@ -1,7 +1,7 @@
 # Production Compose file. Copy it to the server (e.g. /opt/discord-bot/compose.yml) next to:
 #   .env         secrets and settings, see .env.example (chmod 600)
 #   config.json  server allowlist, see config.example.json (must be readable by uid 1000)
-#   data/        loot database directory: mkdir data && sudo chown 1000:1000 data
+#   data/        loot and raids databases: mkdir data && sudo chown 1000:1000 data
 # No secrets belong in this file.
 name: wowforever-bot
 
@@ -16,7 +16,8 @@ services:
     env_file: .env
     volumes:
       - ./config.json:/app/config.json:ro
-      # The loot database (data/loot.sqlite). Must be writable by uid 1000.
+      # The loot and raids databases (data/loot.sqlite, data/raids.sqlite). Must be writable by
+      # uid 1000.
       - ./data:/app/data
     # The image's files cannot be changed at runtime. Data the bot must keep goes in the /app/data
     # volume; scratch files go in /tmp.

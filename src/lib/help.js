@@ -1,5 +1,6 @@
 import { ApplicationCommandOptionType, EmbedBuilder } from 'discord.js';
 import { canUseCommand } from './command.js';
+import { truncate } from './text.js';
 
 // Builds the /help pages from each command's slash command definition and its optional `help`
 // export (described in lib/command.js).
@@ -131,9 +132,10 @@ export function helpPageEmbed(node) {
     footer = `Use /help command:${node.path} <subcommand> for its options and examples.`;
   } else {
     fields.push({ name: 'Usage', value: `\`${usage(node)}\`` });
-    if (node.options.length > 0) {
-      fields.push({ name: 'Options', value: node.options.map(describeOption).join('\n\n') });
-    }
+    // A long list of options is split over several fields rather than cut short.
+    splitIntoFields(node.options.map(describeOption), '\n\n').forEach((value, index) => {
+      fields.push({ name: index === 0 ? 'Options' : 'Options (continued)', value });
+    });
   }
 
   if (node.help.examples?.length > 0) {
@@ -151,6 +153,24 @@ export function helpPageEmbed(node) {
     fields,
     footer,
   });
+}
+
+// `parts` joined by `separator` into as few field values as fit Discord's field limit. A part that
+// is too long on its own gets a field to itself, where buildEmbed() shortens it.
+function splitIntoFields(parts, separator) {
+  const values = [];
+  for (const part of parts) {
+    const last = values.at(-1);
+    if (
+      last !== undefined &&
+      last.length + separator.length + part.length <= EMBED_LIMITS.fieldValue
+    ) {
+      values[values.length - 1] = `${last}${separator}${part}`;
+    } else {
+      values.push(part);
+    }
+  }
+  return values;
 }
 
 // e.g. "/loot character name [weeks] [raid]"
@@ -216,8 +236,4 @@ function embedLength({ title, description, fields, footer }) {
     (footer?.length ?? 0) +
     fields.reduce((sum, field) => sum + field.name.length + field.value.length, 0)
   );
-}
-
-function truncate(text, max) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

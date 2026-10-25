@@ -1,9 +1,7 @@
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { openSqliteDatabase, transaction } from '../lib/sqlite.js';
 
-// Schema migrations, applied in order. PRAGMA user_version records how many have run, so append
-// new migrations to the end and never edit one that has shipped.
+// Schema migrations, applied in order by openSqliteDatabase(). Append new migrations to the end and
+// never edit one that has shipped.
 const MIGRATIONS = [
   `
   -- One uploaded Gargul export. AUTOINCREMENT so a deleted import's number is never reused: a
@@ -62,41 +60,7 @@ const MIGRATIONS = [
 // Opens (creating if needed) the loot database at `filePath` and brings its schema up to date.
 // Pass ':memory:' for a throwaway database.
 export function openLootDatabase(filePath) {
-  if (filePath !== ':memory:') mkdirSync(path.dirname(filePath), { recursive: true });
-
-  const db = new DatabaseSync(filePath);
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA busy_timeout = 5000');
-  migrate(db);
-  return db;
+  return openSqliteDatabase(filePath, MIGRATIONS, 'loot');
 }
 
-function migrate(db) {
-  const { user_version: version } = db.prepare('PRAGMA user_version').get();
-  if (version > MIGRATIONS.length) {
-    throw new Error(
-      `The loot database is at schema version ${version}, newer than this bot supports ` +
-        `(${MIGRATIONS.length}). Was the bot rolled back?`,
-    );
-  }
-  for (let index = version; index < MIGRATIONS.length; index++) {
-    transaction(db, () => {
-      db.exec(MIGRATIONS[index]);
-      db.exec(`PRAGMA user_version = ${index + 1}`);
-    });
-  }
-}
-
-// Runs fn inside a transaction, rolling back if it throws. Returns fn's result.
-export function transaction(db, fn) {
-  db.exec('BEGIN IMMEDIATE');
-  try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
-  } catch (error) {
-    db.exec('ROLLBACK');
-    throw error;
-  }
-}
+export { transaction };

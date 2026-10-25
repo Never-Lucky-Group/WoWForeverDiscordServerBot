@@ -15,7 +15,43 @@ describe('loadEnv', () => {
       logLevel: 'info',
       configPath: 'config.json',
       lootDbPath: 'data/loot.sqlite',
+      raidsDbPath: 'data/raids.sqlite',
+      raidHelperApiKeys: new Map(),
     });
+  });
+
+  it('reads Raid-Helper API keys as a map of server ID to key', () => {
+    const env = loadEnv({
+      ...validEnv,
+      RAID_HELPER_API_KEYS: `{"${GUILD_A.id}":" key-a ","${GUILD_B.id}":"key-b"}`,
+    });
+    expect(env.raidHelperApiKeys).toEqual(
+      new Map([
+        [GUILD_A.id, 'key-a'],
+        [GUILD_B.id, 'key-b'],
+      ]),
+    );
+    expect(loadEnv({ ...validEnv, RAID_HELPER_API_KEYS: '' }).raidHelperApiKeys).toEqual(new Map());
+  });
+
+  it.each([
+    ['not JSON', '{oops', /JSON object/],
+    ['a key that is not a server ID', '{"abc":"key"}', ConfigError],
+    ['an empty API key', `{"${GUILD_A.id}":" "}`, /must not be empty/],
+    ['a list', '["key"]', ConfigError],
+  ])('rejects RAID_HELPER_API_KEYS that is %s', (_label, value, expected) => {
+    expect(() => loadEnv({ ...validEnv, RAID_HELPER_API_KEYS: value })).toThrow(expected);
+  });
+
+  it('never puts an API key in the error message', () => {
+    const error = (() => {
+      try {
+        loadEnv({ ...validEnv, RAID_HELPER_API_KEYS: '{"abc":"super-secret"}' });
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(error.message).not.toContain('super-secret');
   });
 
   it('treats empty optional values as unset', () => {
@@ -129,6 +165,12 @@ describe('parseBotConfig', () => {
     ])('rejects %s', (_label, extra, expected) => {
       expect(() => parseBotConfig({ guilds: [{ ...GUILD_A, ...extra }] })).toThrow(expected);
     });
+  });
+
+  it('rejects the old raidHelper block, which moved to /raidsetup', () => {
+    expect(() => parseBotConfig({ guilds: [{ ...GUILD_A, raidHelper: { events: [] } }] })).toThrow(
+      /raidHelper settings moved to \/raidsetup/,
+    );
   });
 
   it('rejects unknown keys so typos are caught', () => {

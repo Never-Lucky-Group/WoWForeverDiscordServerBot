@@ -1,6 +1,7 @@
 import { NO_PERMISSION_MESSAGE } from '../../handlers/commandInteraction.js';
 import { createOfficerCommand } from '../../lib/command.js';
 import { hasLootRole, isOfficer } from '../../lib/membership.js';
+import { truncate } from '../../lib/text.js';
 import { sendPrivate } from '../../loot/discord/privateReply.js';
 import { importExport } from '../../loot/handlers/importExport.js';
 import { deleteImport, listImports } from '../../loot/handlers/manageImports.js';
@@ -10,7 +11,8 @@ import {
   leaderboardQuery,
   raidQuery,
 } from '../../loot/handlers/queries.js';
-import { DEFAULT_RAID_RESET, localDate } from '../../loot/raidWeeks.js';
+import { localDate } from '../../lib/time.js';
+import { DEFAULT_RAID_RESET } from '../../loot/raidWeeks.js';
 import { AWARD_TYPES } from '../../loot/store.js';
 
 export const NOT_CONFIGURED_MESSAGE =
@@ -19,6 +21,7 @@ export const STORE_UNAVAILABLE_MESSAGE =
   'The loot database is unavailable, so the loot commands are disabled. Check the bot logs.';
 
 const AUTOCOMPLETE_LIMIT = 25;
+const CHOICE_NAME_LIMIT = 100;
 
 // Filter options shared by the query subcommands.
 function addFilterOptions(subcommand, { withType = true } = {}) {
@@ -346,20 +349,20 @@ function suggest(interaction, { guild, guildConfig, store }) {
     case 'name':
       if (interaction.options.getSubcommand() === 'item') {
         return store.searchItems(guild.id, text).map(({ itemId, itemName }) => ({
-          name: truncate(`${itemName} (${itemId})`),
+          name: choiceName(`${itemName} (${itemId})`),
           value: String(itemId),
         }));
       }
       return store
         .searchCharacters(guild.id, text)
-        .map((name) => ({ name: truncate(name), value: name }));
+        .map((name) => ({ name: choiceName(name), value: name }));
 
     case 'session': {
       const timeZone = (guildConfig.raidReset ?? DEFAULT_RAID_RESET).timeZone;
       return store
         .recentSessions(guild.id)
         .map((session) => ({
-          name: truncate(
+          name: choiceName(
             `${localDate(session.startedAt, timeZone)} ${session.raid} · ` +
               `${session.awardCount} items · import #${session.importId}`,
           ),
@@ -379,7 +382,7 @@ function suggest(interaction, { guild, guildConfig, store }) {
             ? localDate(entry.sessions[0].startedAt, timeZone)
             : 'empty';
           return {
-            name: truncate(`#${entry.id} · ${date} · ${raids} · ${entry.awardCount} items`),
+            name: choiceName(`#${entry.id} · ${date} · ${raids} · ${entry.awardCount} items`),
             value: entry.id,
           };
         })
@@ -393,6 +396,6 @@ function suggest(interaction, { guild, guildConfig, store }) {
 }
 
 // Autocomplete choice names are limited to 100 characters.
-function truncate(text) {
-  return text.length > 100 ? `${text.slice(0, 99)}…` : text;
+function choiceName(text) {
+  return truncate(text, CHOICE_NAME_LIMIT);
 }

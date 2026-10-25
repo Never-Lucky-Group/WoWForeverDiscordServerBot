@@ -6,6 +6,7 @@ import { EMBED_LIMITS, commandTree, helpPageEmbed } from '../src/lib/help.js';
 import { loadCommands } from '../src/loaders/commands.js';
 import { GUILD_A, USER_ID, fakeMember } from './helpers/fakes.js';
 import { LOOT_GUILD, LOOT_ROLE_ID } from './helpers/lootInteraction.js';
+import { RAIDER_ROLE_ID, RAID_GUILD, raidsClient } from './helpers/raids.js';
 
 const OFFICER = [GUILD_A.officerRoleId];
 const LOOT_OFFICER = [GUILD_A.officerRoleId, LOOT_ROLE_ID];
@@ -15,7 +16,15 @@ beforeAll(async () => {
   commands = await loadCommands();
 });
 
-function setup({ roles = LOOT_OFFICER, command = null, focused = '', extraCommands = [] } = {}) {
+function setup({
+  roles = LOOT_OFFICER,
+  command = null,
+  focused = '',
+  extraCommands = [],
+  guildConfig = LOOT_GUILD,
+  // The member's client, which canUse() reads the raid setup through.
+  client,
+} = {}) {
   const allCommands = new Collection(commands);
   for (const extra of extraCommands) allCommands.set(extra.data.name, extra);
   const interaction = {
@@ -27,7 +36,8 @@ function setup({ roles = LOOT_OFFICER, command = null, focused = '', extraComman
     followUp: vi.fn(() => Promise.resolve()),
     respond: vi.fn(() => Promise.resolve()),
   };
-  const context = { member: fakeMember(USER_ID, roles), guildConfig: LOOT_GUILD };
+  const member = { ...fakeMember(USER_ID, roles), client };
+  const context = { member, guildConfig };
   return { interaction, context };
 }
 
@@ -91,6 +101,47 @@ describe('/help without a command', () => {
   it('treats a blank command as no command', async () => {
     const { embed } = await run({ command: '   ' });
     expect(embed.title).toBe('Commands');
+  });
+});
+
+describe('/help in a server with a Raid-Helper API key', () => {
+  const guildConfig = { ...RAID_GUILD, lootRoleId: LOOT_ROLE_ID };
+  const client = raidsClient();
+
+  it('lists /raid, /raidsetup and /absence for Officers', async () => {
+    const { embed } = await run({ guildConfig, client });
+    expect(embed.description.split('\n')).toEqual([
+      '`/absence` — Tell the officers when you will miss raids.',
+      '`/help` — List the commands you can use and how to use them.',
+      '`/loot` — Import Gargul loot exports and look up who got what.',
+      '`/ping` — Check that the bot is online and responding.',
+      '`/raid` — Post Raid-Helper sign-up sheets and see who is missing.',
+      '`/raidsetup` — Set up the raid events and raid settings.',
+    ]);
+  });
+
+  it('lists only /absence and /help for raiders', async () => {
+    const { embed } = await run({ guildConfig, client, roles: [RAIDER_ROLE_ID] });
+    expect(embed.description.split('\n')).toEqual([
+      '`/absence` — Tell the officers when you will miss raids.',
+      '`/help` — List the commands you can use and how to use them.',
+    ]);
+  });
+
+  it('describes the /absence subcommands', async () => {
+    const { embed } = await run({
+      guildConfig,
+      client,
+      roles: [RAIDER_ROLE_ID],
+      command: 'absence add',
+    });
+    expect(embed.title).toBe('/absence add');
+    expect(embed.description).toContain('Leave out `to` for a single day');
+  });
+
+  it('treats /raid as unknown for raiders', async () => {
+    const { sent } = await run({ guildConfig, client, roles: [RAIDER_ROLE_ID], command: 'raid' });
+    expect(sent.content).toBe(notFoundMessage('raid'));
   });
 });
 
