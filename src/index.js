@@ -1,5 +1,6 @@
 import { createClient } from './client.js';
 import { ConfigError, loadBotConfig, loadEnv } from './config.js';
+import { updateDescriptionOnStartup } from './lib/botDescription.js';
 import { logger } from './lib/logger.js';
 import { registerCommandsOnStartup } from './lib/registerCommands.js';
 import { loadCommands } from './loaders/commands.js';
@@ -27,6 +28,7 @@ async function main() {
       allowlistedGuilds: client.botConfig.guilds.size,
       commands: client.commands.size,
       events: eventCount,
+      version: env.version,
     },
     'Starting bot',
   );
@@ -37,6 +39,7 @@ async function main() {
   // Runs in the background so registration never delays the bot coming online; client.rest has
   // the token once login() resolves.
   void registerCommandsOnStartup(client.rest, env.clientId, client.commands);
+  void updateDescriptionOnStartup(client.rest, env.version);
 }
 
 // A loot database that cannot be opened (e.g. the data volume is missing) disables only the loot

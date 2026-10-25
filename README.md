@@ -71,6 +71,7 @@ On startup, the logs should show the bot logging in, `Cached guild members` for 
 | `LOOT_DB_PATH`         | no       | Loot database file (default `data/loot.sqlite`)                                                                        |
 | `RAIDS_DB_PATH`        | no       | Raids database file: raid setup, absences and reminders (default `data/raids.sqlite`)                                  |
 | `RAID_HELPER_API_KEYS` | no       | Each server's Raid-Helper API key, which turns raid sign-ups on there (see [Raid sign-ups](#setting-up-raid-sign-ups)) |
+| `BOT_VERSION`          | no       | Release version shown in the bot's description (default `dev`). The Docker image sets it; leave it unset in `.env`     |
 
 `config.json` is the server allowlist. It is gitignored because this repository is public. See `config.example.json`.
 
@@ -272,6 +273,12 @@ Registration replaces the whole command list, so removed commands disappear from
 
 If a new or changed command does not appear, reload Discord (Ctrl+R).
 
+### Version in the bot's description
+
+Every time it starts, the bot writes the version it is running as the last line of its description (its **About Me**), after a blank line: `Version: 0.4.0`. The deploy workflow passes the release tag's version to the image as `BOT_VERSION`; a bot started from a checkout shows `Version: dev`. Only that line is managed: write the rest of the description in the Developer Portal (**General Information → Description**) and the next start keeps it. The edit is only sent when the line changes.
+
+Discord allows 400 characters. If the text plus the version line would be longer, the bot logs a warning and leaves the description unchanged; shorten the text in the portal and restart. If the edit fails, the bot logs an error and keeps running, and the next start tries again.
+
 ## Deployment
 
 Production runs the bot as a Docker container on the homelab server. GitHub is the source of truth: the server only pulls published images and never needs this repository.
@@ -407,7 +414,7 @@ src/
   commands/<category>/*.js  slash commands, loaded automatically
   events/*.js               event listeners, loaded automatically
   handlers/                 command dispatcher, DM handler, server allowlist, join role
-  lib/                      shared helpers (logger, membership checks, command builders, command registration, /help pages, time zones, SQLite)
+  lib/                      shared helpers (logger, membership checks, command builders, command registration, bot description, /help pages, time zones, SQLite)
   loaders/                  dynamic loaders for commands/ and events/
   loot/                     Gargul loot tracking: export parser, database, queries and /loot handlers
   raids/                    Raid-Helper sign-ups: API client, database, setup rules, background loop, member DMs, /raid, /raidsetup and /absence handlers

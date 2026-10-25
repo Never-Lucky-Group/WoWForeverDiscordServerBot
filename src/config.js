@@ -40,9 +40,13 @@ const envSchema = z.object({
       .pipe(z.record(snowflake, z.string().trim().min(1, 'API keys must not be empty')))
       .default({}),
   ),
+  // The release version, set by the Docker image from the deployed tag (v0.4.0 → 0.4.0). Shown in
+  // the bot's description; "dev" when running from a checkout.
+  BOT_VERSION: optionalEnv(z.string().trim().min(1).default('dev')),
 });
 
-// Returns { token, clientId, logLevel, configPath, lootDbPath, raidsDbPath, raidHelperApiKeys }.
+// Returns { token, clientId, logLevel, configPath, lootDbPath, raidsDbPath, raidHelperApiKeys,
+// version }.
 // raidHelperApiKeys is a Map of guild ID → Raid-Helper API key.
 export function loadEnv(source = process.env) {
   const result = envSchema.safeParse(source);
@@ -57,6 +61,7 @@ export function loadEnv(source = process.env) {
     lootDbPath: result.data.LOOT_DB_PATH,
     raidsDbPath: result.data.RAIDS_DB_PATH,
     raidHelperApiKeys: new Map(Object.entries(result.data.RAID_HELPER_API_KEYS)),
+    version: result.data.BOT_VERSION,
   };
 }
 
