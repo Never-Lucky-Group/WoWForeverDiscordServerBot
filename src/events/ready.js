@@ -22,5 +22,8 @@ export default {
         );
       }
     }
+
+    // After prepareGuild() has filled the member cache, which the missing sign-ups reports read.
+    client.raids?.scheduler?.start();
   },
 };

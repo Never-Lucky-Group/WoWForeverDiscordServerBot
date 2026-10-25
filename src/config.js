@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { isTimeZone } from './lib/time.js';
 
 // Thrown when environment variables or config.json are missing or invalid.
 export class ConfigError extends Error {
@@ -19,9 +20,30 @@ const envSchema = z.object({
   ),
   BOT_CONFIG_PATH: optionalEnv(z.string().default('config.json')),
   LOOT_DB_PATH: optionalEnv(z.string().default('data/loot.sqlite')),
+  RAIDS_DB_PATH: optionalEnv(z.string().default('data/raids.sqlite')),
+  // JSON object of guild ID → that server's Raid-Helper API key (from Raid-Helper's /apikey). A
+  // server with a key has the raid sign-up features, set up with /raidsetup.
+  RAID_HELPER_API_KEYS: optionalEnv(
+    z
+      .string()
+      .transform((text, context) => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          context.addIssue({
+            code: 'custom',
+            message: 'Expected a JSON object such as {"<server ID>":"<API key>"}',
+          });
+          return z.NEVER;
+        }
+      })
+      .pipe(z.record(snowflake, z.string().trim().min(1, 'API keys must not be empty')))
+      .default({}),
+  ),
 });
 
-// Returns { token, clientId, logLevel, configPath, lootDbPath }.
+// Returns { token, clientId, logLevel, configPath, lootDbPath, raidsDbPath, raidHelperApiKeys }.
+// raidHelperApiKeys is a Map of guild ID → Raid-Helper API key.
 export function loadEnv(source = process.env) {
   const result = envSchema.safeParse(source);
   if (!result.success) {
@@ -33,6 +55,8 @@ export function loadEnv(source = process.env) {
     logLevel: result.data.LOG_LEVEL,
     configPath: result.data.BOT_CONFIG_PATH,
     lootDbPath: result.data.LOOT_DB_PATH,
+    raidsDbPath: result.data.RAIDS_DB_PATH,
+    raidHelperApiKeys: new Map(Object.entries(result.data.RAID_HELPER_API_KEYS)),
   };
 }
 
@@ -46,20 +70,18 @@ export const WEEKDAYS = [
   'saturday',
 ];
 
-function isTimeZone(value) {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: value });
-    return true;
-  } catch {
-    return false;
-  }
-}
+const timeOfDay = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected a 24-hour time such as "15:00"');
+const timeZone = z
+  .string()
+  .refine(isTimeZone, 'Expected an IANA time zone such as "Europe/London"');
 
 // When the weekly raid lockout resets. "Last X weeks" in the loot commands counts back X resets.
 const raidResetSchema = z.strictObject({
   weekday: z.enum(WEEKDAYS),
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected a 24-hour time such as "15:00"'),
-  timeZone: z.string().refine(isTimeZone, 'Expected an IANA time zone such as "Europe/London"'),
+  time: timeOfDay,
+  timeZone,
 });
 
 // Raid names offered when labelling Gargul imports. A Discord dropdown holds at most 25 options
@@ -87,6 +109,15 @@ const guildConfigSchema = z
     raids: raidsSchema.optional(),
     // Optional: defaults to DEFAULT_RAID_RESET in loot/raidWeeks.js.
     raidReset: raidResetSchema.optional(),
+    // No longer used: raid sign-ups are set up with /raidsetup. Accepted here only so an old
+    // config gets the clear error below rather than "unrecognized key".
+    raidHelper: z.unknown().optional(),
+  })
+  .refine((guild) => guild.raidHelper === undefined, {
+    message:
+      'raidHelper settings moved to /raidsetup in Discord; remove the raidHelper block from ' +
+      'config.json and set raid sign-ups up again with /raidsetup',
+    path: ['raidHelper'],
   })
   // A guild's @everyone role shares the guild's ID; using it would make every member an Officer.
   .refine((guild) => guild.officerRoleId !== guild.id, {

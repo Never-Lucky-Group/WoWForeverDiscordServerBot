@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { localDate, parseLocalDate, raidWeeksStart } from '../src/loot/raidWeeks.js';
+import { localDate, parseLocalDate } from '../src/lib/time.js';
+import { raidWeeksStart } from '../src/loot/raidWeeks.js';
 
 const at = (iso) => Date.parse(iso);
 const seconds = (iso) => Date.parse(iso) / 1000;

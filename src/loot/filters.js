@@ -1,5 +1,6 @@
+import { parseLocalDate } from '../lib/time.js';
 import { discordTime } from './format.js';
-import { DEFAULT_RAID_RESET, parseLocalDate, raidWeeksStart } from './raidWeeks.js';
+import { DEFAULT_RAID_RESET, raidWeeksStart } from './raidWeeks.js';
 import { AWARD_TYPES } from './store.js';
 
 // Thrown for filter options that cannot be used together or do not parse. The message is shown
