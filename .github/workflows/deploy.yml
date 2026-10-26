@@ -152,5 +152,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Read by the bot at startup and written into its Discord description.
+          build-args: |
+            BOT_VERSION=${{ needs.resolve.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -17,6 +17,7 @@ describe('loadEnv', () => {
       lootDbPath: 'data/loot.sqlite',
       raidsDbPath: 'data/raids.sqlite',
       raidHelperApiKeys: new Map(),
+      version: 'dev',
     });
   });
 
@@ -59,6 +60,11 @@ describe('loadEnv', () => {
     expect(env.logLevel).toBe('info');
     expect(env.configPath).toBe('config.json');
     expect(env.lootDbPath).toBe('data/loot.sqlite');
+  });
+
+  it('reads the release version, defaulting to dev when the image passed none', () => {
+    expect(loadEnv({ ...validEnv, BOT_VERSION: '0.4.0' }).version).toBe('0.4.0');
+    expect(loadEnv({ ...validEnv, BOT_VERSION: '' }).version).toBe('dev');
   });
 
   it('accepts overrides', () => {

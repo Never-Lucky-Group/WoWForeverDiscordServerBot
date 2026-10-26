@@ -13,6 +13,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
 
+# The release version, passed by the deploy workflow and shown in the bot's description. Set after
+# the copies so a new version does not rebuild the layers above.
+ARG BOT_VERSION
+ENV BOT_VERSION=$BOT_VERSION
+
 # Secrets (DISCORD_TOKEN, ...) come from the environment and config.json is mounted at
 # /app/config.json at runtime; neither is ever part of the image.
 USER node
