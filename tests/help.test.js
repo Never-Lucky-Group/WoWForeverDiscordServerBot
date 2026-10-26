@@ -79,6 +79,7 @@ describe('/help without a command', () => {
     expect(sent.flags).toBe(MessageFlags.Ephemeral);
     expect(embed.title).toBe('Commands');
     expect(embed.description.split('\n')).toEqual([
+      '`/faq` — Get answers to common questions about the bot by DM.',
       '`/help` — List the commands you can use and how to use them.',
       '`/loot` — Import Gargul loot exports and look up who got what.',
       '`/ping` — Check that the bot is online and responding.',
@@ -91,9 +92,10 @@ describe('/help without a command', () => {
     expect(embed.description).toContain('/ping');
   });
 
-  it('shows only /help to members who are not Officers', async () => {
+  it('shows only /faq and /help to members who are not Officers', async () => {
     const { embed } = await run({ roles: [] });
     expect(embed.description.split('\n')).toEqual([
+      '`/faq` — Get answers to common questions about the bot by DM.',
       '`/help` — List the commands you can use and how to use them.',
     ]);
   });
@@ -112,6 +114,7 @@ describe('/help in a server with a Raid-Helper API key', () => {
     const { embed } = await run({ guildConfig, client });
     expect(embed.description.split('\n')).toEqual([
       '`/absence` — Tell the officers when you will miss raids.',
+      '`/faq` — Get answers to common questions about the bot by DM.',
       '`/help` — List the commands you can use and how to use them.',
       '`/loot` — Import Gargul loot exports and look up who got what.',
       '`/ping` — Check that the bot is online and responding.',
@@ -120,10 +123,11 @@ describe('/help in a server with a Raid-Helper API key', () => {
     ]);
   });
 
-  it('lists only /absence and /help for raiders', async () => {
+  it('lists only /absence, /faq and /help for raiders', async () => {
     const { embed } = await run({ guildConfig, client, roles: [RAIDER_ROLE_ID] });
     expect(embed.description.split('\n')).toEqual([
       '`/absence` — Tell the officers when you will miss raids.',
+      '`/faq` — Get answers to common questions about the bot by DM.',
       '`/help` — List the commands you can use and how to use them.',
     ]);
   });
@@ -242,6 +246,7 @@ describe('/help autocomplete', () => {
   it('suggests every command and subcommand the member can use', async () => {
     const choices = await suggest();
     expect(choices.map((choice) => choice.value)).toEqual([
+      'faq',
       'help',
       'loot',
       'loot import',
@@ -255,7 +260,7 @@ describe('/help autocomplete', () => {
       'loot leaderboard',
       'ping',
     ]);
-    expect(choices[1].name).toBe('/loot — Import Gargul loot exports and look up who got what.');
+    expect(choices[2].name).toBe('/loot — Import Gargul loot exports and look up who got what.');
   });
 
   it('filters by the typed text', async () => {

@@ -1,5 +1,6 @@
 import { createClient } from './client.js';
 import { ConfigError, loadBotConfig, loadEnv } from './config.js';
+import { FaqError, loadFaq } from './faq/faq.js';
 import { updateDescriptionOnStartup } from './lib/botDescription.js';
 import { logger } from './lib/logger.js';
 import { registerCommandsOnStartup } from './lib/registerCommands.js';
@@ -20,6 +21,8 @@ async function main() {
   // Attached to the client so event handlers can reach them via interaction.client, etc.
   client.botConfig = await loadBotConfig(env.configPath);
   client.commands = await loadCommands();
+  // docs/faq.md, for /faq. A missing or malformed FAQ stops the bot, like invalid config.
+  client.faq = await loadFaq();
   client.lootStore = openLootStore(env.lootDbPath);
   client.raids = setUpRaids(client, env);
   const eventCount = await loadEvents(client);
@@ -133,7 +136,7 @@ process.on('unhandledRejection', (reason) => {
 try {
   await main();
 } catch (error) {
-  if (error instanceof ConfigError) {
+  if (error instanceof ConfigError || error instanceof FaqError) {
     logger.fatal(error.message);
   } else {
     logger.fatal({ err: error }, 'Failed to start the bot');
