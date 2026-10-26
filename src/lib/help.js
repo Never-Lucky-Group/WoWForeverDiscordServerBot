@@ -115,7 +115,9 @@ export function commandListEmbed(commands) {
       commands
         .map((command) => `\`/${command.data.name}\` — ${command.data.description}`)
         .join('\n') || 'There are no commands you can use here.',
-    footer: 'Use /help command:<name> for details, options and examples.',
+    footer:
+      'Use /help command:<name> for details, options and examples, or /faq for answers to ' +
+      'common questions.',
   });
 }
 

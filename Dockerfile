@@ -12,6 +12,8 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
+# Read by /faq.
+COPY docs/faq.md ./docs/faq.md
 
 # The release version, passed by the deploy workflow and shown in the bot's description. Set after
 # the copies so a new version does not rebuild the layers above.

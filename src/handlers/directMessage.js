@@ -2,7 +2,8 @@ import { logger } from '../lib/logger.js';
 import { findAllowlistedMemberships } from '../lib/membership.js';
 
 export const DM_PLACEHOLDER_REPLY =
-  "Hi! I received your message, but I don't have any direct message features yet.";
+  "Hi! I can't answer messages here. Run /faq in the server for answers to common questions, " +
+  'or /help for the commands you can use.';
 
 // Handles a DM to the bot. Only members of an allowlisted guild get a reply; others are ignored.
 export async function handleDirectMessage(message) {

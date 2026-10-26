@@ -1,4 +1,5 @@
 import { Events } from 'discord.js';
+import { FAQ_PREFIX, handleFaqSelect } from '../faq/menu.js';
 import { handleAutocomplete, handleChatInputCommand } from '../handlers/commandInteraction.js';
 import { logger } from '../lib/logger.js';
 import { RSVP_PREFIX, handleRsvpButton } from '../raids/rsvp.js';
@@ -18,6 +19,16 @@ export default {
         await handleRsvpButton(interaction);
       } catch (error) {
         logger.error({ err: error, userId: interaction.user.id }, 'DM answer button failed');
+      }
+    } else if (
+      interaction.isStringSelectMenu() &&
+      interaction.customId.startsWith(`${FAQ_PREFIX}:`)
+    ) {
+      // So does the /faq section dropdown.
+      try {
+        await handleFaqSelect(interaction);
+      } catch (error) {
+        logger.error({ err: error, userId: interaction.user.id }, 'FAQ section dropdown failed');
       }
     }
   },
